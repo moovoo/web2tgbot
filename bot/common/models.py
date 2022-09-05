@@ -19,6 +19,7 @@ class MediaItem(BaseModel):
 
 class Post(BaseModel):
     source_id: str
+    source_text: str | None
     original_url: str | None
     text: str
     url: str

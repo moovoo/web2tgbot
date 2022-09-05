@@ -1,7 +1,7 @@
 from aioredis import Redis
 import time
 
-from common.redis import get_new_redis
+from bot.common.redis import get_new_redis
 
 
 class Cache:

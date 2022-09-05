@@ -1,10 +1,14 @@
 import asyncio
 from logging import getLogger
+from typing import List
 
 import aiohttp
 from pydantic import parse_raw_as
 
-from telegram.telegram_models import *
+from bot.common.settings import get_settings
+from bot.telegram.telegram_models import TelegramSendPhotoRequest, TelegramSendVideoRequest, TelegramSendMessageRequest, \
+    TelegramSendMediaGroupRequest, TelegramCopyMessageRequest, TelegramRequest, TelegramReply, InputMedia, Message, \
+    MessageId
 
 
 class TelegramClientException(Exception):
@@ -48,8 +52,10 @@ class TelegramClient:
 
         while True:
             try:
-                self.logger.debug("Going to send %s", request_method)
-                async with self.session.post(BOT_URL + self.token + "/" + request_method, data=data, json=json.dict() if json else None) as req:
+                self.logger.debug("Going to %s", request_method)
+                async with self.session.post(get_settings().BOT_URL + self.token + "/" + request_method,
+                                             data=data, json=json.dict() if json else None) as req:
+                    self.logger.debug("Got %s %s %s", req.status, req.content_type, req.content_length)
                     if not req.ok:
                         text = await req.text()
                         if req.status == 413:

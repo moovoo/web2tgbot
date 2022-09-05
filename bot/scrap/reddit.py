@@ -5,8 +5,8 @@ import urllib.parse
 import aiohttp
 import pydantic
 
-from common.models import Post, MediaItem
-from scrap.reddit_models import RedditReply, SubredditListing, Item, RedditPost, PreviewImage, RedditVideoPreview
+from bot.common.models import Post, MediaItem
+from bot.scrap.reddit_models import RedditReply, SubredditListing, Item, RedditPost, PreviewImage, RedditVideoPreview
 
 logger = getLogger()
 
@@ -123,6 +123,7 @@ def reddit_post_to_message(source_id: str, reddit_post: RedditPost) -> Post:
                     images.append(MediaItem(urls=[fix_url(post_image.source.url)]))
 
     return Post(source_id=source_id,
+                source_text=reddit_post.subreddit_name_prefixed or reddit_post.subreddit,
                 url=reddit_post.url,
                 text=reddit_post.title,
                 images=images if images else None,

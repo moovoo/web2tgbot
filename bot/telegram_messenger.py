@@ -2,23 +2,26 @@ import asyncio
 import logging.config
 import os
 import random
+import tempfile
+import uuid
 from logging import getLogger
 from typing import Tuple
 
 import aiohttp
 from pydantic import parse_raw_as
 
-from common.models import OutboundMessage, MediaItem
-from common.pubsub import get_new_pubsub
-from telegram.client import TelegramClient, TelegramClientException
-from telegram.telegram_models import Message, InputMedia
+from bot.common.models import OutboundMessage, MediaItem
+from bot.common.pubsub import get_new_pubsub
+from bot.common.settings import get_settings
+from bot.telegram.client import TelegramClient, TelegramClientException
+from bot.telegram.telegram_models import Message, InputMedia
 
 
 class ProcessingError(Exception):
     pass
 
 
-class TelegramMessanger:
+class TelegramMessenger:
 
     MAX_URL_SIZE = 20 * 1024 * 1000
     MAX_UPLOAD_SIZE = 50 * 1024 * 1000
@@ -71,27 +74,34 @@ class TelegramMessanger:
             return None, None
 
     async def merge_and_read(self, video_url: str, audio_url: str | None) -> bytes:
-        # with tempfile.NamedTemporaryFile(suffix=".mp4") as fp:
-        self.logger.debug("Going to run ffmpeg for %s, %s", video_url, audio_url)
-        cmd = f"ffmpeg -i {video_url} "
-        if audio_url:
-            cmd += f"-i {audio_url} "
 
-        # cmd += f"-shortest -y {fp.name}"
-        cmd += f"-shortest -y temp.mp4"
+        with tempfile.TemporaryDirectory() as d:
+            filename = os.path.join(d, str(uuid.uuid4()) + ".mp4")
+            self.logger.debug("Going to run ffmpeg for %s, %s, output: %s", video_url, audio_url, filename)
+            cmd = f'ffmpeg -i "{video_url}" '
+            if audio_url:
+                cmd += f'-i "{audio_url}" '
 
-        proc = await asyncio.create_subprocess_shell(cmd)
-        rc = await proc.wait()
-        if rc != 0:
-            raise ProcessingError("Non zero rc code for ffmpeg %s", rc)
-        with open("temp.mp4", "rb") as f:
-            return f.read()
+            cmd += f'-shortest -y "{filename}"'
+
+            proc = await asyncio.create_subprocess_shell(cmd)
+            rc = await proc.wait()
+            if rc != 0:
+                raise ProcessingError("Non zero rc code for ffmpeg %s", rc)
+            with open(filename, "rb") as f:
+                return f.read()
 
     async def process_message(self, message: OutboundMessage):
+        if message.text:
+            for chat_id in message.conversation_ids:
+                await self.tg_client.send_message(chat_id, message.text)
+
         post = message.post
         if not post:
             return
-        caption = f'<a href="{post.url}">{post.text or "..."}</a>'
+
+        caption = f'<a href="{post.original_url}">{post.source_text or post.source_id}</a>: ' \
+                  f'<a href="{post.url}">{post.text or "..."}</a>'
 
         reply: Message | None = None
         first_chat_id = message.conversation_ids[0]
@@ -135,9 +145,9 @@ class TelegramMessanger:
 
 
 async def main():
-    token = os.getenv("TG_BOT_TOKEN")
-    messanger = TelegramMessanger(token)
-    await messanger.serve()
+    token = get_settings().bot_token
+    messenger = TelegramMessenger(token)
+    await messenger.serve()
 
 
 if __name__ == "__main__":

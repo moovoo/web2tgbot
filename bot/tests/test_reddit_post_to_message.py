@@ -1,7 +1,7 @@
 import pydantic
 
-from reddit_scrapper import reddit_post_to_message
-from scrap.reddit_models import Item, RedditReply
+from bot.reddit_scrapper import reddit_post_to_message
+from bot.scrap.reddit_models import Item, RedditReply
 
 
 def parse(filename: str) -> Item:

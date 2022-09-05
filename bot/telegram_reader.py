@@ -3,13 +3,14 @@ import logging.config
 import os
 from logging import getLogger
 
-from common.pubsub import Pubsub, get_new_pubsub
-from telegram.telegram_models import Message
-from telegram.updates import TelegramUpdates
-from common.models import IncomingMessage
+from bot.common.pubsub import Pubsub, get_new_pubsub
+from bot.common.settings import get_settings
+from bot.telegram.telegram_models import Message
+from bot.telegram.updates import TelegramUpdates
+from bot.common.models import IncomingMessage
 
 
-class TelegramMessagePublisher:
+class UpdateReader:
 
     def __init__(self, tg_bot_token: str):
         self.token = tg_bot_token
@@ -18,7 +19,7 @@ class TelegramMessagePublisher:
 
         self.pubsub: Pubsub = get_new_pubsub()
 
-        self.logger = getLogger("TGPublisher")
+        self.logger = getLogger("UpdateReader")
 
     async def serve(self):
         async for update in self.tg_updates.iter_updates():
@@ -40,8 +41,8 @@ class TelegramMessagePublisher:
 
 
 async def main():
-    token = os.getenv("TG_BOT_TOKEN")
-    publisher = TelegramMessagePublisher(token)
+    token = get_settings().bot_token
+    publisher = UpdateReader(token)
     await publisher.serve()
 
 

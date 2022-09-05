@@ -160,6 +160,7 @@ class RedditPost(BaseModel):
     media_metadata: Dict[str, MediaMetadata] | None
     crosspost_parent_list: List[RedditPost] | None
     gallery_data: GalleryData | None
+    subreddit_name_prefixed: str | None
 
 
 class Item(BaseModel):

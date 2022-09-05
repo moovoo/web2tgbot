@@ -4,7 +4,8 @@ from typing import List, AsyncIterable
 import aiohttp
 from pydantic import parse_obj_as, parse_raw_as
 from logging import getLogger
-from .telegram_models import Update, BOT_URL, TelegramReply, GetUpdates, TelegramException
+from .telegram_models import Update, TelegramReply, GetUpdates, TelegramException
+from ..common.settings import get_settings
 
 
 class TelegramUpdates:
@@ -13,7 +14,7 @@ class TelegramUpdates:
         self.logger = getLogger(__name__)
 
     async def iter_updates(self) -> AsyncIterable[Update]:
-        url = BOT_URL + self.bot_token + "/getUpdates"
+        url = get_settings().BOT_URL + self.bot_token + "/getUpdates"
         get_updates_query = GetUpdates()
         get_updates_query.timeout = 60
         async with aiohttp.ClientSession() as session:
