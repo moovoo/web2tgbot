@@ -1,3 +1,4 @@
+import asyncio
 import re
 from logging import getLogger
 from typing import List
@@ -43,7 +44,7 @@ class RedditPosts:
                 reply: RedditReply = pydantic.parse_raw_as(RedditReply, data)
 
                 return reply.data.children if reply.data.children else []
-        except aiohttp.ClientError as ex:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as ex:
             raise RedditError(f"Client error {str(ex)}") from ex
 
 
@@ -108,7 +109,9 @@ def reddit_post_to_message(source_id: str, reddit_post: RedditPost) -> Post:
         elif reddit_post.media.type_ == "gfycat.com":
             # todo:
             print("gfycat")
-
+    elif "imgur.com" in reddit_post.url and reddit_post.url.endswith(".gifv"):
+        videos.append(MediaItem(
+                      urls=[reddit_post.url.replace(".gifv", ".mp4")]))
     elif reddit_post.preview and reddit_post.preview.images:
         # post with images
         post_images: List[PreviewImage] = reddit_post.preview.images

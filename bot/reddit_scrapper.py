@@ -54,6 +54,7 @@ async def main():
             for reddit_post in posts:
                 if await cache.cache_item(cache_name, reddit_post.data.id) and not first_time:
                     post = reddit_post_to_message(full_id, reddit_post.data)
+                    logger.debug("Source post is: %s", reddit_post.data)
                     logger.debug("Going to send new post: %s", post)
                     await pubsub.publish("media",
                                          post.json(exclude_unset=True, exclude_defaults=True, exclude_none=True))

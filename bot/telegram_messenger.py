@@ -13,7 +13,7 @@ from pydantic import parse_raw_as
 from bot.common.models import OutboundMessage, MediaItem
 from bot.common.pubsub import get_new_pubsub
 from bot.common.settings import get_settings
-from bot.telegram.client import TelegramClient, TelegramClientException
+from bot.telegram.client import TelegramClient, TelegramClientBadRequest, TelegramClientForbidden
 from bot.telegram.telegram_models import Message, InputMedia
 
 
@@ -92,54 +92,71 @@ class TelegramMessenger:
                 return f.read()
 
     async def process_message(self, message: OutboundMessage):
-        if message.text:
-            for chat_id in message.conversation_ids:
-                await self.tg_client.send_message(chat_id, message.text)
-
-        post = message.post
-        if not post:
-            return
-
-        caption = f'<a href="{post.original_url}">{post.source_text or post.source_id}</a>: ' \
-                  f'<a href="{post.url}">{post.text or "..."}</a>'
-
-        reply: Message | None = None
-        first_chat_id = message.conversation_ids[0]
         try:
-            if post.videos:
-                # todo: multiple videos?
-                video_url, video_data = await self.prepare_video(post.videos[0])
-                if video_url:
-                    reply = await self.tg_client.send_video(first_chat_id, caption=caption, video_url=video_url)
-                elif video_data:
-                    reply = await self.tg_client.send_video(first_chat_id, caption=caption, video_bytes=video_data)
+            if message.text:
+                for chat_id in message.conversation_ids:
+                    try:
+                        await self.tg_client.send_message(chat_id, message.text)
+                    except (TelegramClientBadRequest, TelegramClientForbidden) as ex:
+                        self.logger.warning(f"Could not send text to chat {chat_id}, {ex}")
 
-            if post.images:
-                if len(post.images) > 1:
-                    if len(post.images) > 10:
-                        src = random.sample(post.images, k=10)
-                    else:
-                        src = post.images
-                    media = [
-                        InputMedia(
-                            type="photo",
-                            media=image.urls[-1],
-                            caption=caption,
-                            parse_mode="HTML") for image in src]
+            post = message.post
+            if not post:
+                return
 
-                    # copyMessage does not work with media groups
-                    for chat_id in message.conversation_ids:
-                        await self.tg_client.send_media_group(chat_id, media)
+            caption = f'<a href="{post.original_url}">{post.source_text or post.source_id}</a>: ' \
+                      f'<a href="{post.url}">{post.text or "..."}</a>'
 
+            if post.images and len(post.images) > 1:
+                if len(post.images) > 10:
+                    src = random.sample(post.images, k=10)
                 else:
-                    reply = await self.tg_client.send_photo(first_chat_id,
-                                                            caption=caption,
-                                                            photo_url=post.images[0].urls[-1])
-            if reply:
-                for chat_id in message.conversation_ids[1:]:
-                    await self.tg_client.copy_message(chat_id, first_chat_id, reply.message_id)
-        except TelegramClientException:
-            self.logger.exception("Failed to send TG message")
+                    src = post.images
+                media = [
+                    InputMedia(
+                        type="photo",
+                        media=image.urls[-1],
+                        caption=image.caption or caption,
+                        parse_mode="HTML") for image in src]
+
+                # copyMessage does not work with media groups
+                for chat_id in message.conversation_ids:
+                    try:
+                        await self.tg_client.send_media_group(chat_id, media)
+                    except (TelegramClientBadRequest, TelegramClientForbidden) as ex:
+                        self.logger.warning(f"Could not send media group to chat {chat_id}, {ex}")
+
+            reply: Message | None = None
+            for index, first_chat_id in enumerate(message.conversation_ids):
+                try:
+                    if post.videos:
+                        # todo: multiple videos?
+                        video_url, video_data = await self.prepare_video(post.videos[0])
+                        if video_url:
+                            reply = await self.tg_client.send_video(first_chat_id,
+                                                                    caption=post.videos[0].caption or caption,
+                                                                    video_url=video_url)
+                        elif video_data:
+                            reply = await self.tg_client.send_video(first_chat_id,
+                                                                    caption=post.videos[0].caption or caption,
+                                                                    video_bytes=video_data)
+
+                    if post.images and len(post.images) == 1:
+                        reply = await self.tg_client.send_photo(first_chat_id,
+                                                                caption=post.images[0].caption or caption,
+                                                                photo_url=post.images[0].urls[-1])
+                except (TelegramClientBadRequest, TelegramClientForbidden) as ex:
+                    self.logger.warning(f"Could not send msg to {first_chat_id}, {ex}")
+                    continue
+
+                if reply:
+                    for chat_id in message.conversation_ids[index+1:]:
+                        try:
+                            await self.tg_client.copy_message(chat_id, first_chat_id, reply.message_id)
+                        except (TelegramClientBadRequest, TelegramClientForbidden) as ex:
+                            self.logger.warning(f"Could not copy message to {chat_id}, {ex}")
+                break
+
         except ProcessingError:
             self.logger.exception("Could not process the post")
 

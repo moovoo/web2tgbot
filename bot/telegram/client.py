@@ -8,7 +8,7 @@ from pydantic import parse_raw_as
 from bot.common.settings import get_settings
 from bot.telegram.telegram_models import TelegramSendPhotoRequest, TelegramSendVideoRequest, TelegramSendMessageRequest, \
     TelegramSendMediaGroupRequest, TelegramCopyMessageRequest, TelegramRequest, TelegramReply, InputMedia, Message, \
-    MessageId
+    MessageId, Chat
 
 
 class TelegramClientException(Exception):
@@ -16,6 +16,10 @@ class TelegramClientException(Exception):
 
 
 class TelegramClientBadRequest(TelegramClientException):
+    pass
+
+
+class TelegramClientForbidden(TelegramClientException):
     pass
 
 
@@ -29,7 +33,7 @@ class TelegramClient:
         self.session = aiohttp.ClientSession()
         self.logger = getLogger()
 
-    async def _send_request(self, request_method: str, request: TelegramSendPhotoRequest | TelegramSendVideoRequest | TelegramSendMessageRequest | TelegramSendMediaGroupRequest | TelegramCopyMessageRequest):
+    async def _send_request(self, request_method: str, request: TelegramRequest | TelegramSendPhotoRequest | TelegramSendVideoRequest | TelegramSendMessageRequest | TelegramSendMediaGroupRequest | TelegramCopyMessageRequest):
         data: aiohttp.FormData | None = None
         json: TelegramRequest | None = None
 
@@ -64,6 +68,9 @@ class TelegramClient:
                         elif req.status == 400:
                             self.logger.error("Bad request")
                             raise TelegramClientBadRequest(f"Bad request {req.status} {text}")
+                        elif req.status == 403:
+                            self.logger.error("Forbidden")
+                            raise TelegramClientForbidden(f"Forbidden {req.status} {text}")
                         else:
                             raise TelegramClientException(f"Unexpected status {req.status} {text}")
 
@@ -111,3 +118,7 @@ class TelegramClient:
         req = TelegramSendMediaGroupRequest(chat_id=chat_id,
                                             media=media)
         return await self._send_request("sendMediaGroup", req)
+
+    async def get_chat(self, chat_id: str | int) -> Chat:
+        req = TelegramRequest(chat_id=chat_id)
+        return await self._send_request("getChat", req)

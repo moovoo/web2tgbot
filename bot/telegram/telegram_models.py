@@ -62,7 +62,7 @@ class ResponseParameters(BaseModel):
 
 class TelegramReply(BaseModel):
     ok: bool
-    result: List[Update] | MessageId | Message | List[Message] | None
+    result: List[Update] | MessageId | Message | List[Message] | Chat | None
     description: str | None
     error_code: int | None
     parameters: ResponseParameters | None
@@ -152,6 +152,17 @@ class Message(MessageId):
     reply_markup: Any | None  # todo: InlineKeyboardMarkup
 
 
+class ChatPermissions(BaseModel):
+    can_send_messages: bool | None
+    can_send_media_messages: bool | None
+    can_send_polls: bool | None
+    can_send_other_messages: bool | None
+    can_add_web_page_previews: bool | None
+    can_change_info: bool | None
+    can_invite_users: bool | None
+    can_pin_messages: bool | None
+
+
 class Chat(BaseModel):
     id: int
     type: str
@@ -167,7 +178,7 @@ class Chat(BaseModel):
     description: str | None
     invite_link: str | None
     pinned_message: Message | None
-    permissions: Any | None  # todo: ChatPermissions
+    permissions: ChatPermissions | None
     slow_mode_delay: int | None
     message_auto_delete_time: int | None
     has_protected_content: bool | None
