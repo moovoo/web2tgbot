@@ -20,6 +20,10 @@ class RedditThrottleError(RedditError):
     pass
 
 
+class RedditNotFoundError(RedditError):
+    pass
+
+
 class RedditPosts:
     def __init__(self):
         self.session = aiohttp.ClientSession()
@@ -36,6 +40,8 @@ class RedditPosts:
                 if not req.ok:
                     if req.status == 429:
                         raise RedditThrottleError("Too many requests")
+                    elif req.status == 404:
+                        raise RedditNotFoundError("Listing not found")
                     else:
                         raise RedditError(f"Got error {req.status} from {url}")
 

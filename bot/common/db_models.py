@@ -10,7 +10,7 @@ class MediaSource(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     media_source = Column(String, index=True, unique=True)
 
-    conversation = relationship("Conversation", back_populates="media_source")
+    conversation = relationship("Conversation", back_populates="media_source", cascade="all, delete")
 
 
 class Conversation(Base):
@@ -19,5 +19,5 @@ class Conversation(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     conversation = Column(String, index=True)
 
-    media_source_id = Column(Integer, ForeignKey("media_sources.id"))
+    media_source_id = Column(Integer, ForeignKey("media_sources.id", ondelete="CASCADE"))
     media_source = relationship("MediaSource", back_populates="conversation")

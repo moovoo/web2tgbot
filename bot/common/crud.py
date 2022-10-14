@@ -1,10 +1,20 @@
 from typing import List
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
+from sqlalchemy.cimmutabledict import immutabledict
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bot.common.db_models import MediaSource, Conversation
+
+
+class DBException(Exception):
+    pass
+
+
+class DBNotFoundException(DBException):
+    pass
 
 
 async def find_or_add_media_source(db: AsyncSession, media_source: str):
@@ -30,13 +40,12 @@ async def get_media_sources(db: AsyncSession) -> List[str]:
 
 
 async def delete_media_source(db: AsyncSession, media_source: str):
-    statement = select(MediaSource) \
+    statement = delete(MediaSource) \
         .filter(MediaSource.media_source == media_source)
-    res = await db.execute(statement)
-
-    ms: MediaSource = res.scalars().first()
-    if ms:
-        await db.delete(ms)
+    res: CursorResult = await db.execute(statement)
+    await db.commit()
+    if res.rowcount != 1:
+        raise DBException("Not found")
 
 
 async def add_conversation_for_media_source(db: AsyncSession,
@@ -63,14 +72,15 @@ async def get_conversations_for_media_source(db: AsyncSession, media_source: str
 
 
 async def delete_conversation_for_media_source(db: AsyncSession, media_source: str, conversation: str):
-    statement = select(Conversation).filter(
+    statement = delete(Conversation).where(
         Conversation.conversation == conversation,
         Conversation.media_source.has(MediaSource.media_source == media_source),
     )
 
-    res = await db.execute(statement)
-    if item := res.scalars().first():
-        await db.delete(item)
+    res: CursorResult = await db.execute(statement, execution_options=immutabledict({"synchronize_session": 'fetch'}))
+    await db.commit()
+    if res.rowcount != 1:
+        raise DBException("Not found")
 
 
 async def get_media_sources_for_conversation(db: AsyncSession, conversation: str):

@@ -7,7 +7,7 @@ from bot.common.cache import get_new_cache
 from bot.common.configuration import get_configuration
 from bot.common.pubsub import get_new_pubsub
 from bot.common.redis import get_new_redis
-from bot.scrap.reddit import RedditPosts, RedditError, RedditThrottleError, reddit_post_to_message
+from bot.scrap.reddit import RedditPosts, RedditError, RedditThrottleError, reddit_post_to_message, RedditNotFoundError
 from bot.scrap.reddit_models import SubredditListing, BadRedditUrlException
 
 logger = getLogger()
@@ -38,10 +38,14 @@ async def main():
             cache_name = f"cache_{sub_name}"
             first_time = not await cache.has_cache(cache_name)
 
+            posts = []
             while True:
                 await asyncio.sleep(pause)
                 try:
                     posts = await rd_posts.get_posts(sub)
+                    break
+                except RedditNotFoundError:
+                    logger.warning("Could not found listing, ignoring...")
                     break
                 except RedditThrottleError:
                     pause += 10 if pause < 300 else 0
