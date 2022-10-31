@@ -63,7 +63,9 @@ class SubredditListing(BaseModel):
 class ImageMetadata(BaseModel):
     x: int
     y: int
-    u: str
+    u: str | None
+    gif: str | None
+    mp4: str | None
 
 
 class MediaMetadata(BaseModel):

@@ -79,15 +79,21 @@ def reddit_post_to_message(source_id: str, reddit_post: RedditPost) -> Post:
         # gallery post
         media_items = {}
         for media_id, media_metadata in reddit_post.media_metadata.items():
-            if media_metadata.s and media_metadata.e == "Image":
-                media_items[media_id] = media_metadata.s.u
+            if media_metadata.s:
+                # Image|AnimatedImage, url
+                media_items[media_id] = media_metadata.e, media_metadata.s.u or media_metadata.s.mp4
 
         if reddit_post.gallery_data and reddit_post.gallery_data.items:
             for item in reddit_post.gallery_data.items:
-                images.append(MediaItem(
-                    urls=[fix_url(media_items[item.media_id])],
-                    caption=item.caption
-                ))
+                media_item_type, url = media_items[item.media_id]
+                item_to_add = MediaItem(
+                        urls=[fix_url(url)],
+                        caption=item.caption
+                    )
+                if media_item_type == "Image":
+                    images.append(item_to_add)
+                elif media_item_type == "AnimatedImage":
+                    videos.append(item_to_add)
 
     elif (reddit_post.media and reddit_post.media.reddit_video) \
             or (reddit_post.preview and reddit_post.preview.reddit_video_preview):
