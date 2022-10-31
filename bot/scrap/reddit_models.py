@@ -5,6 +5,8 @@ from urllib.parse import urlparse, parse_qs
 
 from pydantic import BaseModel, Field
 
+from bot.common.settings import get_settings
+
 
 class BadRedditUrlException(Exception):
     pass
@@ -50,7 +52,7 @@ class SubredditListing(BaseModel):
         return SubredditListing(subreddit=subreddit, sorting=sorting or "hot", timing=timing)
 
     def to_url(self, json: bool = False) -> str:
-        url = f"https://www.reddit.com/r/{self.subreddit}/{self.sorting}/"
+        url = f"{get_settings().RD_BASE_URL}{self.subreddit}/{self.sorting}/"
         if json:
             url += ".json"
         if self.timing:

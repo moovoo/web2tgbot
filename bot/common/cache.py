@@ -13,9 +13,10 @@ class Cache:
 
 
 class RedisCache(Cache):
-    def __init__(self, redis: Redis, max_size: int = 500):
+    def __init__(self, redis: Redis, max_size: int = 500, expiration: int = 30*24*60*60):
         self.redis = redis
         self.max_size = max_size
+        self.expiration = expiration
 
     async def cache_item(self, cache_name: str, item: str) -> bool:
         result = await self.redis.zadd(cache_name, mapping={item: time.time()})
@@ -30,7 +31,7 @@ class RedisCache(Cache):
         sz = await self.redis.zcard(cache_name)
         if sz > self.max_size:
             await self.redis.zpopmin(cache_name, sz - self.max_size)
-        await self.redis.expire(cache_name, 30*24*60*60)
+        await self.redis.expire(cache_name, self.expiration)
 
 
 def get_new_cache() -> Cache:

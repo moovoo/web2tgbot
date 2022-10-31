@@ -1,0 +1,13 @@
+{
+    "request": {
+        "url": "/r/pics/top/.json?t=year",
+        "method": "GET"
+    },
+    "response": {
+        "status": 200,
+        "bodyFileName": "pics.json",
+        "headers": {
+            "Content-Type": "application/json"
+        }
+    }
+}

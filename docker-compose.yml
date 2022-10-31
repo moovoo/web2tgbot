@@ -1,4 +1,5 @@
 version: '3'
+name: web2tgbot
 
 x-base: &x-base
   image: bot
@@ -45,7 +46,7 @@ services:
       POSTGRES_PASSWORD: bot
       PGDATA: /var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - database:/var/lib/postgresql/data
 
@@ -65,7 +66,7 @@ services:
     image: redis:7
     restart: always
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis:/data
 
@@ -91,8 +92,8 @@ services:
       - RABBITMQ_DEFAULT_USER=web2tg
       - RABBITMQ_DEFAULT_PASS=bot
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq:/var/lib/rabbitmq
 

@@ -24,6 +24,10 @@ class RedditNotFoundError(RedditError):
     pass
 
 
+class RedditValidationError(RedditError):
+    pass
+
+
 class RedditPosts:
     def __init__(self):
         self.session = aiohttp.ClientSession()
@@ -47,11 +51,17 @@ class RedditPosts:
 
                 data = await req.text()
 
-                reply: RedditReply = pydantic.parse_raw_as(RedditReply, data)
-
-                return reply.data.children if reply.data.children else []
         except (aiohttp.ClientError, asyncio.TimeoutError) as ex:
             raise RedditError(f"Client error {str(ex)}") from ex
+
+        try:
+            reply: RedditReply = pydantic.parse_raw_as(RedditReply, data)
+            return reply.data.children if reply.data.children else []
+        except pydantic.ValidationError as ex:
+            logger.error(f"Data were {data}")
+            logger.error(ex.errors())
+            logger.error(ex.json())
+            raise RedditValidationError("Could not parse reddit output") from ex
 
 
 def fix_url(url: str) -> str:

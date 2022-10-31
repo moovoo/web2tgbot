@@ -1,0 +1,70 @@
+version: '3'
+name: web2tgbot_test
+
+x-base: &x-base
+  image: bot
+  environment:
+    redis: "redis://redis:6379/"
+    rabbitmq: "amqp://web2tg:bot@rabbitmq:5672/"
+    db: "postgresql+asyncpg://web2tg:bot@database:5432/web2tg"
+    bot_token: "12345:TOKEN"
+    RD_BASE_URL: "http://wiremock_reddit:8080/r/"
+    BOT_URL: "http://wiremock_tg:8080/bot"
+  tmpfs:
+    - /tmp
+  depends_on:
+    - database
+    - rabbitmq
+    - redis
+    - wiremock_reddit
+    - wiremock_tg
+
+services:
+  tests:
+    build:
+      context: .
+      args:
+        dev: 1
+    <<: *x-base
+    command:
+      - "tests"
+
+  database:
+    image: postgres:14.2
+    restart: always
+    environment:
+      POSTGRES_USER: web2tg
+      POSTGRES_PASSWORD: bot
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    image: redis:7
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3.10-management-alpine
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=web2tg
+      - RABBITMQ_DEFAULT_PASS=bot
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+
+  wiremock_reddit:
+    image: wiremock/wiremock:2.34.0
+    volumes:
+      - ./wiremock/reddit:/home/wiremock
+    ports:
+      - "127.0.0.1:8081:8080"
+
+  wiremock_tg:
+    image: wiremock/wiremock:2.34.0
+    volumes:
+      - ./wiremock/tg:/home/wiremock
+    ports:
+      - "127.0.0.1:8082:8080"

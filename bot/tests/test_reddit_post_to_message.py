@@ -1,3 +1,5 @@
+import os.path
+
 import pydantic
 
 from bot.reddit_scrapper import reddit_post_to_message
@@ -5,7 +7,8 @@ from bot.scrap.reddit_models import Item, RedditReply
 
 
 def parse(filename: str) -> Item:
-    reply = pydantic.parse_file_as(RedditReply, filename)
+    base = os.path.dirname(__file__)
+    reply = pydantic.parse_file_as(RedditReply, os.path.join(base, filename))
     return reply.data.children[0]
 
 
