@@ -122,7 +122,7 @@ def reddit_post_to_message(source_id: str, reddit_post: RedditPost) -> Post:
                     video_variants.append(video.fallback_url)
                 videos.append(MediaItem(
                     urls=video_variants,
-                    audio=f"{parsed.scheme}://{parsed.netloc}{base_path}/DASH_audio.mp4" if not video.is_gif else None))
+                    audio=f"{parsed.scheme}://{parsed.netloc}{base_path}/DASH_AUDIO_64.mp4" if not video.is_gif else None))
 
     elif reddit_post.media and reddit_post.media.type_:
         if reddit_post.media.type_ == "youtube.com" and \

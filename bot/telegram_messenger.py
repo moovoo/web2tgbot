@@ -2,6 +2,7 @@ import asyncio
 import logging.config
 import os
 import random
+import signal
 import tempfile
 import uuid
 from logging import getLogger
@@ -85,7 +86,15 @@ class TelegramMessenger:
             cmd += f'-shortest -y "{filename}"'
 
             proc = await asyncio.create_subprocess_shell(cmd)
-            rc = await proc.wait()
+            try:
+                rc = await asyncio.wait_for(proc.wait(), 600)
+            except asyncio.TimeoutError:
+                self.logger.error("Timeout waiting for ffmpeg, killing")
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except:
+                    proc.kill()
+                raise ProcessingError("ffmpeg process timeout")
             if rc != 0:
                 raise ProcessingError("Non zero rc code for ffmpeg %s", rc)
             with open(filename, "rb") as f:
