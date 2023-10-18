@@ -1,0 +1,12 @@
+{
+    "request": {
+        "url": "/r/throttle/hot/.json",
+        "method": "GET"
+    },
+    "response": {
+        "status": 429,
+        "headers": {
+            "Content-Type": "application/json"
+        }
+    }
+}

@@ -1,0 +1,104 @@
+version: '3'
+name: web2tgbot
+
+x-base: &x-base
+  image: bot
+  restart: always
+  environment:
+    redis: "redis://redis:6379/"
+    rabbitmq: "amqp://web2tg:bot@rabbitmq:5672/"
+    db: "postgresql+asyncpg://web2tg:bot@database:5432/web2tg"
+    bot_token: "${TOKEN}"
+  tmpfs:
+    - /tmp
+  depends_on:
+    - database
+    - rabbitmq
+    - redis
+
+services:
+  bot:
+    build: .
+    <<: *x-base
+    command:
+      - "bot.bot"
+
+  reader:
+    <<: *x-base
+    command:
+      - "bot.telegram_reader"
+
+  messenger:
+    <<: *x-base
+    command:
+      - "bot.telegram_messenger"
+
+  scrapper:
+    <<: *x-base
+    command:
+      - "bot.reddit_scrapper"
+
+  database:
+    image: postgres:14.2
+    restart: always
+    environment:
+      POSTGRES_USER: web2tg
+      POSTGRES_PASSWORD: bot
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - database:/var/lib/postgresql/data
+
+#  pgadmin:
+#    image: dpage/pgadmin4:6
+#    environment:
+#      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+#      PGADMIN_DEFAULT_PASSWORD: admin
+#    volumes:
+#      - ./servers.json:/pgadmin4/servers.json:ro
+#    ports:
+#      - "8089:80"
+#    depends_on:
+#      - database
+
+  redis:
+    image: redis:7
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis:/data
+
+#  prometheus:
+#    image: bitnami/prometheus:latest
+#    volumes:
+#      - prometheus-persistence:/opt/bitnami/prometheus/data
+#      - ./prometheus.yaml:/opt/bitnami/prometheus/conf/prometheus.yml:ro
+#    ports:
+#      - "9090:9090"
+#
+#  grafana:
+#    image: grafana/grafana-oss
+#    ports:
+#      - "3000:3000"
+#    volumes:
+#      - grafana-storage:/var/lib/grafana
+
+  rabbitmq:
+    image: rabbitmq:3.10-management-alpine
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=web2tg
+      - RABBITMQ_DEFAULT_PASS=bot
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq
+
+volumes:
+  database:
+  redis:
+  rabbitmq:
+
