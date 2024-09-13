@@ -50,7 +50,10 @@ class TelegramMessenger:
             async with aiohttp.ClientSession() as session:
                 async with session.head(url) as head:
                     self.logger.debug("Got head for %s, %s, %s", url, head.status, head.content_length)
-                    return head.content_length or 0
+                    if head.status <= 204:
+                        return head.content_length or 0
+                    else:
+                        raise ProcessingError(f"Unexpected status code {head.status}")
         except aiohttp.ClientError as ex:
             raise ProcessingError("Failed to get content_size") from ex
 
@@ -60,9 +63,11 @@ class TelegramMessenger:
 
         audio_content_size = 0
         if media_item.audio:
-            audio_content_size = await self.get_content_size(media_item.audio) or 0
-            self.logger.debug("audio size is %s", audio_content_size)
-
+            try:
+                audio_content_size = await self.get_content_size(media_item.audio) or 0
+                self.logger.debug("audio size is %s", audio_content_size)
+            except ProcessingError as ex:
+                self.logger.warning(f"Ignoring audio channel because of processing error {ex}")
         for video_url in reversed(media_item.urls):
             sz = await self.get_content_size(video_url)
             self.logger.debug("Candidate size is %s", sz)
