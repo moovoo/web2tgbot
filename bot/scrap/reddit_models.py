@@ -103,7 +103,7 @@ class PreviewImage(BaseModel):
 
 
 class RedditVideoPreview(BaseModel):
-    bitrate_kbps: int
+    bitrate_kbps: int | None
     fallback_url: str
     width: int
     height: int
