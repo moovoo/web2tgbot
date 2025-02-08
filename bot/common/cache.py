@@ -1,4 +1,4 @@
-from aioredis import Redis
+from redis.asyncio import Redis
 import time
 
 from bot.common.redis import get_new_redis

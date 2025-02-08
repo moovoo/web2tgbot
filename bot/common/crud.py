@@ -1,10 +1,10 @@
 from typing import List
 
 from sqlalchemy import select, delete
-from sqlalchemy.cimmutabledict import immutabledict
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.util import immutabledict
 
 from bot.common.db_models import MediaSource, Conversation
 

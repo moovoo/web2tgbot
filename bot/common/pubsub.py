@@ -1,12 +1,9 @@
 import asyncio
-from logging import getLogger
 from typing import Any, Tuple, AsyncGenerator
 
 import aio_pika
-import aioredis
 from aio_pika.abc import AbstractRobustConnection, AbstractRobustChannel, AbstractIncomingMessage
 
-from bot.common.redis import get_new_redis
 from bot.common.settings import get_settings
 
 
@@ -14,44 +11,11 @@ class Pubsub:
     async def publish(self, channel_id: str, message: str | bytes) -> None:
         pass
 
-    def stream_messages(self, *args) -> AsyncGenerator[Tuple[str, str | None, str], Any]:
+    def stream_messages(self, *args) -> AsyncGenerator[Tuple[str | None, int | None, bytes], Any]:
         pass
 
-    async def ack_message(self, channel_id: str, message_id: str) -> None:
+    async def ack_message(self, channel_id: str, message_id: int) -> None:
         pass
-
-
-class PubsubRedis(Pubsub):
-    def __init__(self, redis: aioredis.Redis):
-        self.redis = redis
-        self.pubsub = self.redis.pubsub()
-        self.logger = getLogger("PBRedis")
-
-    async def publish(self, channel_id: str, message: str | bytes, verify_accepted: bool = False) -> None:
-        to_sleep = 0
-        while True:
-            res = await self.redis.publish(channel_id, message)
-            if not verify_accepted or res:
-                break
-            self.logger.warning(f"No one accepted a message for channel {channel_id}")
-            to_sleep += 1 if to_sleep < 30 else 0
-            await asyncio.sleep(to_sleep)
-
-    async def stream_messages(self, *args) -> AsyncGenerator[Tuple[str, str | None, str], Any]:
-        await self.pubsub.subscribe(*args)
-        try:
-            while True:
-                message = await self.pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
-                if not message:
-                    continue
-                # {'type': 'message', 'pattern': None, 'channel': 'ch3', 'data': '1551515'}
-                if message.get("type") == "message":
-                    stop = yield message.get("channel"), None, message.get("data")
-                    if stop:
-                        break
-
-        finally:
-            await self.pubsub.unsubscribe(args)
 
 
 class PubsubRabbitmq(Pubsub):
@@ -74,7 +38,7 @@ class PubsubRabbitmq(Pubsub):
                 body=message if type(message) is bytes else message.encode()
             ), routing_key=channel_id)
 
-    async def stream_messages(self, *args) -> AsyncGenerator[Tuple[str, str | None, str], Any]:
+    async def stream_messages(self, *args) -> AsyncGenerator[Tuple[str | None, int | None, bytes], Any]:
         await self._get_connection()
         # await self.channel.basic_qos(prefetch_count=1)
 

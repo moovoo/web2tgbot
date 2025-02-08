@@ -2,8 +2,10 @@ import asyncio
 import logging.config
 from typing import List
 
-from pydantic import parse_raw_as
 from logging import getLogger
+
+from prometheus_client import Histogram, Counter
+from prometheus_async.aio import web, time
 
 from bot.common.configuration import get_configuration, TooManySubs
 from bot.common.models import IncomingMessage, Post, OutboundMessage
@@ -13,6 +15,10 @@ from bot.scrap.reddit_models import SubredditListing, BadRedditUrlException
 
 
 class Web2TgBot:
+
+    BOT_PROCESS_MESSAGE_TIME = Histogram('bot_message_process_time', 'Time spent processing messages')
+    BOT_MESSAGES_SENT = Counter('bot_messages_sent', 'Number of messages sent by user')
+
     def __init__(self):
         self.pubsub = get_new_pubsub()
         self.redis = get_new_redis()
@@ -24,13 +30,13 @@ class Web2TgBot:
         reader = pubsub.stream_messages("incoming_message", "media")
         async for channel_id, message_id, message_raw in reader:
             if channel_id == "media":
-                post: Post = parse_raw_as(Post, message_raw)
+                post: Post = Post.model_validate_json(message_raw)
                 self.logger.debug("Got new post %s", post)
 
                 await self.process_post(post)
 
             elif channel_id == "incoming_message":
-                message: IncomingMessage = parse_raw_as(IncomingMessage, message_raw)
+                message: IncomingMessage = IncomingMessage.model_validate_json(message_raw)
                 self.logger.debug("Got incoming message %s", message)
 
                 await self.process_incoming_message(message)
@@ -40,13 +46,15 @@ class Web2TgBot:
     async def send_message(self, dest: str,  conversations: List[str], *,
                            post: Post | None = None, text: str | None = None):
         self.logger.debug("Will send %s to %s: %s", post or text, dest, conversations)
-        await self.pubsub.publish(dest, OutboundMessage(post=post, text=text, conversation_ids=conversations).json())
+        self.BOT_MESSAGES_SENT.inc()
+        await self.pubsub.publish(dest, OutboundMessage(post=post, text=text, conversation_ids=conversations).model_dump_json())
 
     async def process_post(self, post: Post):
         destinations = await self.configuration.find_subs(post.source_id)
         for dest, convs in destinations.items():
             await self.send_message(dest, convs, post=post)
 
+    @time(BOT_PROCESS_MESSAGE_TIME)
     async def process_incoming_message(self, message: IncomingMessage):
         if message.payload.startswith("/start "):
             dest = message.payload[len("/start "):].strip()
@@ -84,6 +92,7 @@ class Web2TgBot:
 
 
 async def main():
+    _ = await web.start_http_server(port=8000)
     await Web2TgBot().serve()
 
 if __name__ == "__main__":

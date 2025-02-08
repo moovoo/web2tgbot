@@ -2,6 +2,8 @@ import asyncio
 import logging.config
 from logging import getLogger
 from typing import List
+from prometheus_async.aio import web
+from prometheus_client import Counter, Gauge
 
 from bot.common.cache import get_new_cache
 from bot.common.configuration import get_configuration
@@ -12,8 +14,12 @@ from bot.scrap.reddit_models import SubredditListing, BadRedditUrlException
 
 logger = getLogger()
 
+REDDIT_POSTS_PUSHED = Counter('reddit_posts_pushed', 'Number of posts pushed', labelnames=['sub'])
+REDDIT_SCRAP_PAUSE = Gauge("reddit_scrap_pause", "Time between requests", labelnames=['sub'])
 
 async def main():
+    _ = await web.start_http_server(port=8000)
+
     redis = get_new_redis()
     pubsub = get_new_pubsub()
     cache = get_new_cache()
@@ -40,6 +46,7 @@ async def main():
 
             posts = []
             while True:
+                REDDIT_SCRAP_PAUSE.labels(sub=sub.to_str_tuple()).set(pause)
                 await asyncio.sleep(pause)
                 try:
                     posts = await rd_posts.get_posts(sub)
@@ -59,11 +66,12 @@ async def main():
 
             for reddit_post in posts:
                 if await cache.cache_item(cache_name, reddit_post.data.id) and not first_time:
+                    REDDIT_POSTS_PUSHED.labels(sub=sub.to_str_tuple()).inc()
                     post = reddit_post_to_message(full_id, reddit_post.data)
                     logger.debug("Source post is: %s", reddit_post.data)
                     logger.debug("Going to send new post: %s", post)
                     await pubsub.publish("media",
-                                         post.json(exclude_unset=True, exclude_defaults=True, exclude_none=True))
+                                         post.model_dump_json(exclude_unset=True, exclude_defaults=True, exclude_none=True))
         await asyncio.sleep(1)
 
 if __name__ == "__main__":

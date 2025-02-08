@@ -9,7 +9,6 @@ from logging import getLogger
 from typing import Tuple
 
 import aiohttp
-from pydantic import parse_raw_as
 
 from bot.common.models import OutboundMessage, MediaItem
 from bot.common.pubsub import get_new_pubsub
@@ -17,6 +16,8 @@ from bot.common.settings import get_settings
 from bot.telegram.client import TelegramClient, TelegramClientBadRequest, TelegramClientForbidden
 from bot.telegram.telegram_models import Message, InputMedia
 
+from prometheus_client import Histogram, Counter
+from prometheus_async.aio import time, web
 
 class ProcessingError(Exception):
     pass
@@ -26,6 +27,14 @@ class TelegramMessenger:
 
     MAX_URL_SIZE = 20 * 1024 * 1000
     MAX_UPLOAD_SIZE = 50 * 1024 * 1000
+
+    VIDEO_PROCESSING_TIME = Histogram("tg_messenger_video_processing_time", "Time spent processing video")
+    MESSAGE_PROCESSING_TIME = Histogram("tg_messenger_message_processing_time", "Time spent processing message")
+    MESSAGES_PROCESSED = Counter("tg_messenger_messages_processed", "Number of messages processed",
+                                 labelnames=["conversation_id"])
+    HEAD_REQUEST_ERRORS = Counter("tg_messenger_head_request_errors",
+                                  "Number of errors encountered while getting content size",
+                                  labelnames=["error_type"])
 
     def __init__(self, token: str):
         self.logger = getLogger()
@@ -38,10 +47,13 @@ class TelegramMessenger:
         reader = self.pubsub.stream_messages(f"telegram_{self.bot_id}")
         async for channel_id, message_id, message_raw in reader:
 
-            outbound_message: OutboundMessage = parse_raw_as(OutboundMessage, message_raw)
+            outbound_message: OutboundMessage = OutboundMessage.model_validate_json(message_raw)
             self.logger.debug("Got new message %s", outbound_message)
 
             await self.process_message(outbound_message)
+
+            for c_id in outbound_message.conversation_ids:
+                self.MESSAGES_PROCESSED.labels(conversation_id=c_id).inc()
 
             await self.pubsub.ack_message(channel_id, message_id)
 
@@ -53,10 +65,14 @@ class TelegramMessenger:
                     if head.status <= 204:
                         return head.content_length or 0
                     else:
+                        self.HEAD_REQUEST_ERRORS.labels(
+                            error_type=f"http_error_{head.status}").inc()
                         raise ProcessingError(f"Unexpected status code {head.status}")
         except aiohttp.ClientError as ex:
+            self.HEAD_REQUEST_ERRORS.labels(error_type=f"client_error_{ex.__class__.__name__.lower()}").inc()
             raise ProcessingError("Failed to get content_size") from ex
 
+    @time(VIDEO_PROCESSING_TIME)
     async def prepare_video(self, media_item: MediaItem) -> Tuple[str | None, bytes | None]:
 
         self.logger.debug("Will look for suitable video in %s", media_item.urls)
@@ -105,6 +121,7 @@ class TelegramMessenger:
             with open(filename, "rb") as f:
                 return f.read()
 
+    @time(MESSAGE_PROCESSING_TIME)
     async def process_message(self, message: OutboundMessage):
         try:
             if message.text:
@@ -176,6 +193,7 @@ class TelegramMessenger:
 
 
 async def main():
+    _ = await web.start_http_server(port=8000)
     token = get_settings().bot_token
     messenger = TelegramMessenger(token)
     await messenger.serve()

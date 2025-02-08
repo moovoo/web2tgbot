@@ -3,13 +3,14 @@ from logging import getLogger
 from typing import List
 
 import aiohttp
-from pydantic import parse_raw_as
 
 from bot.common.settings import get_settings
 from bot.telegram.telegram_models import TelegramSendPhotoRequest, TelegramSendVideoRequest, TelegramSendMessageRequest, \
     TelegramSendMediaGroupRequest, TelegramCopyMessageRequest, TelegramRequest, TelegramReply, InputMedia, Message, \
     MessageId, Chat
 
+from prometheus_client import Histogram, Counter
+from prometheus_async.aio import time
 
 class TelegramClientException(Exception):
     pass
@@ -28,11 +29,17 @@ class TelegramClientSizeException(TelegramClientBadRequest):
 
 
 class TelegramClient:
+
+    TG_REQUEST_TIME = Histogram(name="tg_client_request_time", documentation="Time spent waiting for TG client request")
+    TG_REQUEST_ERRORS = Counter(name="tg_client_errors", documentation="Client errors",
+                                labelnames=["error_type"])
+
     def __init__(self, token: str):
         self.token = token
         self.session = aiohttp.ClientSession()
         self.logger = getLogger()
 
+    @time(TG_REQUEST_TIME)
     async def _send_request(self, request_method: str, request: TelegramRequest | TelegramSendPhotoRequest | TelegramSendVideoRequest | TelegramSendMessageRequest | TelegramSendMediaGroupRequest | TelegramCopyMessageRequest):
         data: aiohttp.FormData | None = None
         json: TelegramRequest | None = None
@@ -58,29 +65,34 @@ class TelegramClient:
             try:
                 self.logger.debug("Going to %s", request_method)
                 async with self.session.post(get_settings().BOT_URL + self.token + "/" + request_method,
-                                             data=data, json=json.dict() if json else None) as req:
+                                             data=data, json=json.model_dump() if json else None) as req:
                     self.logger.debug("Got %s %s %s", req.status, req.content_type, req.content_length)
                     if not req.ok:
                         text = await req.text()
                         if req.status == 413:
                             self.logger.error("Request too big!")
+                            self.TG_REQUEST_ERRORS.labels("too_big").inc()
                             raise TelegramClientSizeException()
                         elif req.status == 400:
                             self.logger.error("Bad request")
+                            self.TG_REQUEST_ERRORS.labels("bad_request").inc()
                             raise TelegramClientBadRequest(f"Bad request {req.status} {text}")
                         elif req.status == 403:
                             self.logger.error("Forbidden")
+                            self.TG_REQUEST_ERRORS.labels("forbidden").inc()
                             raise TelegramClientForbidden(f"Forbidden {req.status} {text}")
                         else:
+                            self.TG_REQUEST_ERRORS.labels(f"http_{req.status}").inc()
                             raise TelegramClientException(f"Unexpected status {req.status} {text}")
 
-                    reply: TelegramReply = parse_raw_as(TelegramReply, await req.text())
+                    reply: TelegramReply = TelegramReply.model_validate_json(await req.text())
                     if not reply.ok:
-
+                        self.TG_REQUEST_ERRORS.labels(f"server_error_{reply.error_code}").inc()
                         raise TelegramClientException(f"Reply was not ok: {reply.error_code}, {reply.description}")
                     return reply.result
 
-            except aiohttp.ClientError:
+            except aiohttp.ClientError as ex:
+                self.TG_REQUEST_ERRORS.labels(f"http_client_error_{ex.__class__.__name__.lower()}").inc()
                 self.logger.exception("Got unexpected client error")
 
             await asyncio.sleep(1)

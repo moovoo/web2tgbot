@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.13
 ARG dev
 RUN if [ -z $dev ]; then apt-get update && apt-get install -y ffmpeg; fi
 

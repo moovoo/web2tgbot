@@ -1,17 +1,17 @@
 import asyncio
 
 import aio_pika
-import aioredis
-
+from redis.asyncio import Redis
 from bot.common.settings import get_settings
 from bot.db.database import async_session
+from sqlalchemy import text
 
 
 async def wait_db():
     while True:
         try:
             async with async_session() as db:
-                await db.execute("select * from alembic_version")
+                await db.execute(text("select * from alembic_version"))
             print("DB is ok")
             break
         except Exception as ex:
@@ -31,7 +31,7 @@ async def wait_rmq():
 
 
 async def wait_redis():
-    c = aioredis.from_url(get_settings().redis)
+    c = Redis.from_url(get_settings().redis)
     while True:
         try:
             await c.ping()

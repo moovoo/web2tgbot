@@ -18,7 +18,7 @@ DELIM = "#"
 class SubredditListing(BaseModel):
     subreddit: str
     sorting: str
-    timing: str | None
+    timing: str | None = None
 
     def to_str_tuple(self):
         return f"{self.subreddit}{DELIM}{self.sorting}{DELIM}{self.timing if self.timing else ''}"
@@ -63,18 +63,18 @@ class SubredditListing(BaseModel):
 class ImageMetadata(BaseModel):
     x: int
     y: int
-    u: str | None
-    gif: str | None
-    mp4: str | None
+    u: str | None = None
+    gif: str | None = None
+    mp4: str | None = None
 
 
 class MediaMetadata(BaseModel):
-    status: str
-    e: str
-    m: str
-    o: List[ImageMetadata] | None
-    p: List[ImageMetadata] | None
-    s: ImageMetadata | None
+    status: str | None = None
+    e: str | None = None
+    m: str | None = None
+    o: List[ImageMetadata] | None = None
+    p: List[ImageMetadata] | None = None
+    s: ImageMetadata | None = None
 
 
 class PreviewImageItem(BaseModel):
@@ -84,26 +84,26 @@ class PreviewImageItem(BaseModel):
 
 
 class PreviewImageVariantsOptions(BaseModel):
-    source: PreviewImageItem | None
-    resolutions: List[PreviewImageItem] | None
+    source: PreviewImageItem | None = None
+    resolutions: List[PreviewImageItem] | None = None
 
 
 class PreviewImageVariants(BaseModel):
-    gif: PreviewImageVariantsOptions | None
-    mp4: PreviewImageVariantsOptions | None
-    obfuscated: PreviewImageVariantsOptions | None
-    nsfw: PreviewImageVariantsOptions | None
+    gif: PreviewImageVariantsOptions | None = None
+    mp4: PreviewImageVariantsOptions | None = None
+    obfuscated: PreviewImageVariantsOptions | None = None
+    nsfw: PreviewImageVariantsOptions | None = None
 
 
 class PreviewImage(BaseModel):
     id: str
-    source: PreviewImageItem | None
-    resolutions: List[PreviewImageItem] | None
-    variants: PreviewImageVariants | None
+    source: PreviewImageItem | None = None
+    resolutions: List[PreviewImageItem] | None = None
+    variants: PreviewImageVariants | None = None
 
 
 class RedditVideoPreview(BaseModel):
-    bitrate_kbps: int | None
+    bitrate_kbps: int | None = None
     fallback_url: str
     width: int
     height: int
@@ -116,27 +116,27 @@ class RedditVideoPreview(BaseModel):
 
 
 class Preview(BaseModel):
-    images: List[PreviewImage] | None
-    reddit_video_preview: RedditVideoPreview | None
+    images: List[PreviewImage] | None = None
+    reddit_video_preview: RedditVideoPreview | None = None
     enabled: bool
 
 
 class Embed(BaseModel):
-    provider_url: str | None
-    title: str | None
-    html: str | None
-    thumbnail_url: str | None
-    type_: str | None = Field(alias="type")
+    provider_url: str | None = None
+    title: str | None = None
+    html: str | None = None
+    thumbnail_url: str | None = None
+    type_: str | None = Field(alias="type", default=None)
 
 
 class Media(BaseModel):
-    reddit_video: RedditVideoPreview | None
-    oembed: Embed | None
-    type_: str | None = Field(alias="type")
+    reddit_video: RedditVideoPreview | None = None
+    oembed: Embed | None = None
+    type_: str | None = Field(alias="type", default=None)
 
 
 class GalleryItem(BaseModel):
-    caption: str | None
+    caption: str | None = None
     media_id: str
     id: int
 
@@ -147,24 +147,24 @@ class GalleryData(BaseModel):
 
 class RedditPost(BaseModel):
     subreddit: str
-    title: str | None
+    title: str | None = None
     name: str
-    thumbnail: str | None
+    thumbnail: str | None = None
     created: int
     created_utc: int
     subreddit_id: str
     id: str
     author: str
     permalink: str
-    url: str | None
+    url: str | None = None
     is_video: bool
-    preview: Preview | None
-    media: Media | None
-    secure_media: Media | None
-    media_metadata: Dict[str, MediaMetadata] | None
-    crosspost_parent_list: List[RedditPost] | None
-    gallery_data: GalleryData | None
-    subreddit_name_prefixed: str | None
+    preview: Preview | None = None
+    media: Media | None = None
+    secure_media: Media | None = None
+    media_metadata: Dict[str, MediaMetadata] | None = None
+    crosspost_parent_list: List[RedditPost] | None = None
+    gallery_data: GalleryData | None = None
+    subreddit_name_prefixed: str | None = None
 
 
 class Item(BaseModel):
@@ -173,12 +173,12 @@ class Item(BaseModel):
 
 
 class Listing(BaseModel):
-    after: str | None
+    after: str | None = None
     dist: int
-    modhash: str | None
-    geo_filter: str | None
-    children: List[Item] | None
-    before: str | None
+    modhash: str | None = None
+    geo_filter: str | None = None
+    children: List[Item] | None = None
+    before: str | None = None
 
 
 class RedditReply(BaseModel):
@@ -186,4 +186,4 @@ class RedditReply(BaseModel):
     data: Listing
 
 
-RedditPost.update_forward_refs()
+RedditPost.model_rebuild()

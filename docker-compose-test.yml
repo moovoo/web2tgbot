@@ -1,5 +1,3 @@
-version: '3'
-name: web2tgbot_test
 
 x-base: &x-base
   image: bot

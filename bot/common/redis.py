@@ -1,9 +1,7 @@
-import os
-
-import aioredis
+from redis.asyncio import Redis
 
 from bot.common.settings import get_settings
 
 
 def get_new_redis():
-    return aioredis.from_url(get_settings().redis, decode_responses=True)
+    return Redis.from_url(get_settings().redis, decode_responses=True)

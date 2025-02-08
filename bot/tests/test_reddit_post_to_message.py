@@ -1,14 +1,13 @@
 import os.path
 
-import pydantic
-
 from bot.reddit_scrapper import reddit_post_to_message
 from bot.scrap.reddit_models import Item, RedditReply
 
 
 def parse(filename: str) -> Item:
     base = os.path.dirname(__file__)
-    reply = pydantic.parse_file_as(RedditReply, os.path.join(base, filename))
+    with open(os.path.join(base, filename)) as file:
+        reply = RedditReply.model_validate_json(file.read())
     return reply.data.children[0]
 
 

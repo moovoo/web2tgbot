@@ -5,6 +5,8 @@ from typing import List
 import urllib.parse
 import aiohttp
 import pydantic
+from prometheus_client import Histogram, Counter
+from prometheus_async.aio import time
 
 from bot.common.models import Post, MediaItem
 from bot.scrap.reddit_models import RedditReply, SubredditListing, Item, RedditPost, PreviewImage, RedditVideoPreview
@@ -29,10 +31,16 @@ class RedditValidationError(RedditError):
 
 
 class RedditPosts:
+
+    REDDIT_REQUEST_TIME = Histogram(name="reddit_client_request_time", documentation="Time spent waiting for reddit client request")
+    REDDIT_REQUEST_ERRORS = Counter(name="reddit_client_errors", documentation="Reddit client errors",
+                                labelnames=["error_type", "sub_name"])
+
     def __init__(self):
         self.session = aiohttp.ClientSession()
         self.logger = getLogger()
 
+    @time(REDDIT_REQUEST_TIME)
     async def get_posts(self, sub: SubredditListing) -> List[Item]:
         url = sub.to_url(json=True)
 
@@ -43,21 +51,26 @@ class RedditPosts:
                                   sub.to_str_tuple(), req.status, req.content_type, req.content_length)
                 if not req.ok:
                     if req.status == 429:
+                        self.REDDIT_REQUEST_ERRORS.labels(error_type="throttle_error", sub_name=sub.to_str_tuple()).inc()
                         raise RedditThrottleError("Too many requests")
                     elif req.status == 404:
+                        self.REDDIT_REQUEST_ERRORS.labels(error_type="not_found", sub_name=sub.to_str_tuple()).inc()
                         raise RedditNotFoundError("Listing not found")
                     else:
+                        self.REDDIT_REQUEST_ERRORS.labels(error_type=f"http_error_{req.status}", sub_name=sub.to_str_tuple()).inc()
                         raise RedditError(f"Got error {req.status} from {url}")
 
                 data = await req.text()
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as ex:
+            self.REDDIT_REQUEST_ERRORS.labels(error_type=f"client_error_{ex.__class__.__name__}", sub_name=sub.to_str_tuple()).inc()
             raise RedditError(f"Client error {str(ex)}") from ex
 
         try:
-            reply: RedditReply = pydantic.parse_raw_as(RedditReply, data)
+            reply: RedditReply = RedditReply.model_validate_json(data)
             return reply.data.children if reply.data.children else []
         except pydantic.ValidationError as ex:
+            self.REDDIT_REQUEST_ERRORS.labels(error_type=f"validation_error", sub_name=sub.to_str_tuple()).inc()
             logger.error(f"Data were {data}")
             logger.error(ex.errors())
             logger.error(ex.json())
@@ -71,7 +84,7 @@ def fix_url(url: str) -> str:
 def reddit_post_to_message(source_id: str, reddit_post: RedditPost) -> Post:
     images = []
     videos = []
-    audio = None
+    # audio = None
     if reddit_post.crosspost_parent_list:
         reddit_post = reddit_post.crosspost_parent_list[0]
 
@@ -153,5 +166,4 @@ def reddit_post_to_message(source_id: str, reddit_post: RedditPost) -> Post:
                 text=reddit_post.title,
                 images=images if images else None,
                 videos=videos if videos else None,
-                audio=audio,
                 original_url="https://reddit.com" + reddit_post.permalink)

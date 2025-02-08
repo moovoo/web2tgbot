@@ -1,0 +1,12 @@
+scrape_configs:
+  - job_name: bot
+    static_configs:
+      - targets:
+          - messenger:8000
+          - reader:8000
+          - scrapper:8000
+          - bot:8000
+#  - job_name: rmq
+#    static_configs:
+#      - targets:
+#          - rabbitmq:15692
