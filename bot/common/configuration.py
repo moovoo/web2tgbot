@@ -5,10 +5,9 @@ from typing import Dict, List
 from bot.common.crud import find_or_add_media_source, add_conversation_for_media_source, \
     delete_conversation_for_media_source, \
     get_conversations_for_media_source, get_media_sources, delete_media_source, get_media_sources_for_conversation
-from bot.common.models import IncomingMessage
+from bot.common.models import IncomingMessage, ScrapSource
 from bot.common.settings import get_settings
 from bot.db.database import async_session
-from bot.scrap.reddit_models import SubredditListing
 
 logger = getLogger("config")
 
@@ -25,10 +24,10 @@ class AbstractConfiguration:
     async def find_subs(self, source_id: str) -> Dict[str, List[str]]:
         pass
 
-    async def add_reddit_sub(self, listing: SubredditListing, message: IncomingMessage) -> None:
+    async def add_sub(self, scrap_source: ScrapSource, message: IncomingMessage) -> None:
         pass
 
-    async def rm_reddit_sub(self, listing: SubredditListing, message: IncomingMessage) -> None:
+    async def rm_sub(self, scrap_source: ScrapSource, message: IncomingMessage) -> None:
         pass
 
     async def get_sources(self) -> List[str]:
@@ -53,8 +52,8 @@ class PGConfiguration(AbstractConfiguration):
                 result.setdefault(provider, []).append(conversation_id)
         return result
 
-    async def add_reddit_sub(self, listing: SubredditListing, message: IncomingMessage) -> None:
-        self.logger.debug("Adding new reddit sub %s, %s %s", listing.to_str_tuple(), message.provider,
+    async def add_sub(self, scrap_source: ScrapSource, message: IncomingMessage) -> None:
+        self.logger.debug("Adding new sub %s, %s %s", scrap_source.to_str_tuple(), message.provider,
                           message.conversation_id)
         conv_id = f"{message.provider}@{message.conversation_id}"
         async with async_session() as db:
@@ -62,14 +61,14 @@ class PGConfiguration(AbstractConfiguration):
             if len(existing) > get_settings().max_sources:
                 raise TooManySubs()
 
-            source = await find_or_add_media_source(db, "reddit@" + listing.to_str_tuple())
+            source = await find_or_add_media_source(db, scrap_source.to_str_tuple())
             await add_conversation_for_media_source(db, conv_id, source)
 
-    async def rm_reddit_sub(self, listing: SubredditListing, message: IncomingMessage) -> None:
-        self.logger.debug("Removing reddit sub %s, %s %s", listing.to_str_tuple(), message.provider,
+    async def rm_sub(self, scrap_source: ScrapSource, message: IncomingMessage) -> None:
+        self.logger.debug("Removing sub %s, %s %s", scrap_source.to_str_tuple(), message.provider,
                           message.conversation_id)
 
-        full_id = "reddit@" + listing.to_str_tuple()
+        full_id = scrap_source.to_str_tuple()
         async with async_session() as db:
             await delete_conversation_for_media_source(
                 db,

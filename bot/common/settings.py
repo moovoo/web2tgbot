@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     BOT_URL: str = "https://api.telegram.org/bot"
     RD_BASE_URL: str = "https://reddit.com/r/"
+    INSTA_BASE_URL: str = "https://www.instagram.com/"
+    INSTA_API_BASE_URL: str = "https://i.instagram.com/"
 
     redis: str = "redis://localhost:6379/"
     rabbitmq: str = "amqp://web2tg:bot@localhost:5672/"

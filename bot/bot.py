@@ -8,10 +8,9 @@ from prometheus_client import Histogram, Counter
 from prometheus_async.aio import web, time
 
 from bot.common.configuration import get_configuration, TooManySubs
-from bot.common.models import IncomingMessage, Post, OutboundMessage
+from bot.common.models import IncomingMessage, Post, OutboundMessage, ScrapSource, BadSourceException
 from bot.common.pubsub import get_new_pubsub
 from bot.common.redis import get_new_redis
-from bot.scrap.reddit_models import SubredditListing, BadRedditUrlException
 
 
 class Web2TgBot:
@@ -59,10 +58,10 @@ class Web2TgBot:
         if message.payload.startswith("/start "):
             dest = message.payload[len("/start "):].strip()
             try:
-                listing = SubredditListing.from_url(dest)
-                await self.configuration.add_reddit_sub(listing, message)
-            except BadRedditUrlException:
-                self.logger.warning("Tried to start bad reddit %s %s", dest, message.conversation_id)
+                scrap_source = ScrapSource.from_url(dest)
+                await self.configuration.add_sub(scrap_source, message)
+            except BadSourceException:
+                self.logger.warning("Tried to start bad url %s %s", dest, message.conversation_id)
                 await self.send_message(message.provider, conversations=[message.conversation_id],
                                         text="Bad reddit listing URL")
                 return
@@ -73,18 +72,18 @@ class Web2TgBot:
         elif message.payload.startswith("/stop "):
             dest = message.payload[len("/stop "):].strip()
             try:
-                listing = SubredditListing.from_url(dest)
-            except BadRedditUrlException:
+                scrap_source = ScrapSource.from_url(dest)
+            except BadSourceException:
                 self.logger.warning("Tried to stop bad reddit %s %s", dest, message.conversation_id)
                 await self.send_message(message.provider, conversations=[message.conversation_id],
                                         text="Bad reddit listing URL")
                 return
-            await self.configuration.rm_reddit_sub(listing, message)
+            await self.configuration.rm_sub(scrap_source, message)
         elif message.payload.startswith("/list"):
             sources = await self.configuration.find_sources(message.provider + "@" + message.conversation_id)
             if sources:
                 reply_text = "Subs: \n\n" + \
-                             "\n".join((SubredditListing.from_str_tuple(src.split("@")[1]).to_url() for src in sources))
+                             "\n".join((ScrapSource.from_str_tuple(src).to_url() for src in sources))
             else:
                 reply_text = "Nothing found"
             await self.send_message(message.provider, conversations=[message.conversation_id],

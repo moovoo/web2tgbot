@@ -1,169 +1,118 @@
-import asyncio
 import re
 from logging import getLogger
 from typing import List
 import urllib.parse
-import aiohttp
 import pydantic
 from prometheus_client import Histogram, Counter
-from prometheus_async.aio import time
 
-from bot.common.models import Post, MediaItem
-from bot.scrap.reddit_models import RedditReply, SubredditListing, Item, RedditPost, PreviewImage, RedditVideoPreview
-
-logger = getLogger()
+from bot.common.models import Post, MediaItem, ScrapSource
+from bot.scrap.reddit_models import RedditReply, Item, RedditPost, PreviewImage, RedditVideoPreview
+from bot.scrap.basescrapper import BaseScrapper, ScrapValidationError
 
 
-class RedditError(Exception):
-    pass
-
-
-class RedditThrottleError(RedditError):
-    pass
-
-
-class RedditNotFoundError(RedditError):
-    pass
-
-
-class RedditValidationError(RedditError):
-    pass
-
-
-class RedditPosts:
-
-    REDDIT_REQUEST_TIME = Histogram(name="reddit_client_request_time", documentation="Time spent waiting for reddit client request")
-    REDDIT_REQUEST_ERRORS = Counter(name="reddit_client_errors", documentation="Reddit client errors",
+class RedditPosts(BaseScrapper):
+    REQUEST_TIME = Histogram(name="reddit_client_request_time", documentation="Time spent waiting for reddit client request")
+    REQUEST_ERRORS = Counter(name="reddit_client_errors", documentation="Reddit client errors",
                                 labelnames=["error_type", "sub_name"])
 
-    def __init__(self):
-        self.session = aiohttp.ClientSession()
-        self.logger = getLogger()
-
-    @time(REDDIT_REQUEST_TIME)
-    async def get_posts(self, sub: SubredditListing) -> List[Item]:
-        url = sub.to_url(json=True)
-
-        # todo: more exceptions
-        try:
-            async with self.session.get(url) as req:
-                self.logger.debug("Got reply for %s: %s %s %s",
-                                  sub.to_str_tuple(), req.status, req.content_type, req.content_length)
-                if not req.ok:
-                    if req.status == 429:
-                        self.REDDIT_REQUEST_ERRORS.labels(error_type="throttle_error", sub_name=sub.to_str_tuple()).inc()
-                        raise RedditThrottleError("Too many requests")
-                    elif req.status == 404:
-                        self.REDDIT_REQUEST_ERRORS.labels(error_type="not_found", sub_name=sub.to_str_tuple()).inc()
-                        raise RedditNotFoundError("Listing not found")
-                    else:
-                        self.REDDIT_REQUEST_ERRORS.labels(error_type=f"http_error_{req.status}", sub_name=sub.to_str_tuple()).inc()
-                        raise RedditError(f"Got error {req.status} from {url}")
-
-                data = await req.text()
-
-        except (aiohttp.ClientError, asyncio.TimeoutError) as ex:
-            self.REDDIT_REQUEST_ERRORS.labels(error_type=f"client_error_{ex.__class__.__name__}", sub_name=sub.to_str_tuple()).inc()
-            raise RedditError(f"Client error {str(ex)}") from ex
-
+    def data_to_posts(self, sub: ScrapSource, data: str) -> List[Post]:
         try:
             reply: RedditReply = RedditReply.model_validate_json(data)
-            return reply.data.children if reply.data.children else []
         except pydantic.ValidationError as ex:
-            self.REDDIT_REQUEST_ERRORS.labels(error_type=f"validation_error", sub_name=sub.to_str_tuple()).inc()
-            logger.error(f"Data were {data}")
-            logger.error(ex.errors())
-            logger.error(ex.json())
-            raise RedditValidationError("Could not parse reddit output") from ex
+            self.REQUEST_ERRORS.labels(error_type=f"validation_error", sub_name=sub.params.to_str_tuple()).inc()
+            self.logger.error(f"Data were {data}")
+            self.logger.error(ex.errors())
+            self.logger.error(ex.json())
+            raise ScrapValidationError("Could not parse reddit output") from ex
+        reddit_posts = reply.data.children if reply.data.children else []
 
+        return [self.reddit_post_to_message(sub.to_str_tuple(), reddit_post.data) for reddit_post in reddit_posts]
 
-def fix_url(url: str) -> str:
-    return url.replace("&amp;", "&")
+    def reddit_post_to_message(self, source_id: str, reddit_post: RedditPost) -> Post:
+        images = []
+        videos = []
+        # audio = None
+        if reddit_post.crosspost_parent_list:
+            reddit_post = reddit_post.crosspost_parent_list[0]
 
+        if reddit_post.media_metadata:
+            # gallery post
+            media_items = {}
+            for media_id, media_metadata in reddit_post.media_metadata.items():
+                if media_metadata.s:
+                    # Image|AnimatedImage, url
+                    media_items[media_id] = media_metadata.e, media_metadata.s.u or media_metadata.s.mp4
 
-def reddit_post_to_message(source_id: str, reddit_post: RedditPost) -> Post:
-    images = []
-    videos = []
-    # audio = None
-    if reddit_post.crosspost_parent_list:
-        reddit_post = reddit_post.crosspost_parent_list[0]
+            if reddit_post.gallery_data and reddit_post.gallery_data.items:
+                for item in reddit_post.gallery_data.items:
+                    media_item_type, url = media_items[item.media_id]
+                    item_to_add = MediaItem(
+                            urls=[self.fix_url(url)],
+                            caption=item.caption
+                        )
+                    if media_item_type == "Image":
+                        images.append(item_to_add)
+                    elif media_item_type == "AnimatedImage":
+                        videos.append(item_to_add)
 
-    if reddit_post.media_metadata:
-        # gallery post
-        media_items = {}
-        for media_id, media_metadata in reddit_post.media_metadata.items():
-            if media_metadata.s:
-                # Image|AnimatedImage, url
-                media_items[media_id] = media_metadata.e, media_metadata.s.u or media_metadata.s.mp4
+        elif (reddit_post.media and reddit_post.media.reddit_video) \
+                or (reddit_post.preview and reddit_post.preview.reddit_video_preview):
+            video: RedditVideoPreview | None = None
+            # todo: parse real xml from dash_url
+            if reddit_post.media and reddit_post.media.reddit_video:
+                video = reddit_post.media.reddit_video
+            elif reddit_post.preview and reddit_post.preview.reddit_video_preview:
+                video = reddit_post.preview.reddit_video_preview
 
-        if reddit_post.gallery_data and reddit_post.gallery_data.items:
-            for item in reddit_post.gallery_data.items:
-                media_item_type, url = media_items[item.media_id]
-                item_to_add = MediaItem(
-                        urls=[fix_url(url)],
-                        caption=item.caption
-                    )
-                if media_item_type == "Image":
-                    images.append(item_to_add)
-                elif media_item_type == "AnimatedImage":
-                    videos.append(item_to_add)
+            if video:
+                resolutions = ["240", "270", "360", "480", "720", "1080"]
 
-    elif (reddit_post.media and reddit_post.media.reddit_video) \
-            or (reddit_post.preview and reddit_post.preview.reddit_video_preview):
-        video: RedditVideoPreview | None = None
-        # todo: parse real xml from dash_url
-        if reddit_post.media and reddit_post.media.reddit_video:
-            video = reddit_post.media.reddit_video
-        elif reddit_post.preview and reddit_post.preview.reddit_video_preview:
-            video = reddit_post.preview.reddit_video_preview
+                parsed = urllib.parse.urlparse(video.fallback_url)
+                base_path, fallback_filename = parsed.path.rsplit("/", maxsplit=1)
 
-        if video:
-            resolutions = ["240", "360", "480", "720", "1080"]
+                match = re.match(r"DASH_(\d+)\.mp4", fallback_filename)
+                if match:
+                    fallback_resolution = match.group(1)
+                    video_variants = []
+                    try:
+                        for res in resolutions[:resolutions.index(fallback_resolution) + 1]:
+                            video_variants.append(f"{parsed.scheme}://{parsed.netloc}{base_path}/DASH_{res}.mp4")
+                    except (IndexError, ValueError):
+                        self.logger.warning("Could not find '%s' in resolutions", fallback_filename)
+                        video_variants.append(video.fallback_url)
+                    videos.append(MediaItem(
+                        urls=video_variants,
+                        audio=f"{parsed.scheme}://{parsed.netloc}{base_path}/DASH_AUDIO_64.mp4" if not video.is_gif else None))
 
-            parsed = urllib.parse.urlparse(video.fallback_url)
-            base_path, fallback_filename = parsed.path.rsplit("/", maxsplit=1)
+        elif reddit_post.media and reddit_post.media.type_:
+            if reddit_post.media.type_ == "youtube.com" and \
+                    reddit_post.media.oembed and reddit_post.media.oembed.thumbnail_url:
+                images.append(MediaItem(urls=[reddit_post.media.oembed.thumbnail_url]))
+            elif reddit_post.media.type_ == "gfycat.com":
+                # todo:
+                print("gfycat")
+        elif "imgur.com" in reddit_post.url and reddit_post.url.endswith(".gifv"):
+            videos.append(MediaItem(
+                          urls=[reddit_post.url.replace(".gifv", ".mp4")]))
+        elif reddit_post.preview and reddit_post.preview.images:
+            # post with images
+            post_images: List[PreviewImage] = reddit_post.preview.images
+            for post_image in post_images:
+                if post_image.variants and (post_image.variants.mp4 or post_image.variants.gif):
+                    src = post_image.variants.mp4 or post_image.variants.gif
+                    if src and src.resolutions and src.source and src.source.url:
+                        this_video = [self.fix_url(res.url) for res in src.resolutions] + [self.fix_url(src.source.url)]
+                        videos.append(MediaItem(urls=this_video))
+                else:
+                    if post_image.source and post_image.source.url:
+                        images.append(MediaItem(urls=[self.fix_url(post_image.source.url)]))
 
-            match = re.match(r"DASH_(\d+)\.mp4", fallback_filename)
-            if match:
-                fallback_resolution = match.group(1)
-                video_variants = []
-                try:
-                    for res in resolutions[:resolutions.index(fallback_resolution) + 1]:
-                        video_variants.append(f"{parsed.scheme}://{parsed.netloc}{base_path}/DASH_{res}.mp4")
-                except (IndexError, ValueError):
-                    logger.warning("Could not find '%s' in resolutions", fallback_filename)
-                    video_variants.append(video.fallback_url)
-                videos.append(MediaItem(
-                    urls=video_variants,
-                    audio=f"{parsed.scheme}://{parsed.netloc}{base_path}/DASH_AUDIO_64.mp4" if not video.is_gif else None))
-
-    elif reddit_post.media and reddit_post.media.type_:
-        if reddit_post.media.type_ == "youtube.com" and \
-                reddit_post.media.oembed and reddit_post.media.oembed.thumbnail_url:
-            images.append(MediaItem(urls=[reddit_post.media.oembed.thumbnail_url]))
-        elif reddit_post.media.type_ == "gfycat.com":
-            # todo:
-            print("gfycat")
-    elif "imgur.com" in reddit_post.url and reddit_post.url.endswith(".gifv"):
-        videos.append(MediaItem(
-                      urls=[reddit_post.url.replace(".gifv", ".mp4")]))
-    elif reddit_post.preview and reddit_post.preview.images:
-        # post with images
-        post_images: List[PreviewImage] = reddit_post.preview.images
-        for post_image in post_images:
-            if post_image.variants and (post_image.variants.mp4 or post_image.variants.gif):
-                src = post_image.variants.mp4 or post_image.variants.gif
-                if src and src.resolutions and src.source and src.source.url:
-                    this_video = [fix_url(res.url) for res in src.resolutions] + [fix_url(src.source.url)]
-                    videos.append(MediaItem(urls=this_video))
-            else:
-                if post_image.source and post_image.source.url:
-                    images.append(MediaItem(urls=[fix_url(post_image.source.url)]))
-
-    return Post(source_id=source_id,
-                source_text=reddit_post.subreddit_name_prefixed or reddit_post.subreddit,
-                url=reddit_post.url,
-                text=reddit_post.title,
-                images=images if images else None,
-                videos=videos if videos else None,
-                original_url="https://reddit.com" + reddit_post.permalink)
+        return Post(unique_id=reddit_post.id,
+                    source_id=source_id,
+                    source_text=reddit_post.subreddit_name_prefixed or reddit_post.subreddit,
+                    url=reddit_post.url,
+                    text=reddit_post.title,
+                    images=images if images else None,
+                    videos=videos if videos else None,
+                    original_url="https://reddit.com" + reddit_post.permalink,
+                    text_block=reddit_post.selftext)

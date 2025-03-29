@@ -3,6 +3,7 @@ from logging import getLogger
 from typing import List
 
 import aiohttp
+from pydantic import ValidationError
 
 from bot.common.settings import get_settings
 from bot.telegram.telegram_models import TelegramSendPhotoRequest, TelegramSendVideoRequest, TelegramSendMessageRequest, \
@@ -61,14 +62,21 @@ class TelegramClient:
         else:
             json = request
 
+        pause = 1
+
         while True:
             try:
                 self.logger.debug("Going to %s", request_method)
                 async with self.session.post(get_settings().BOT_URL + self.token + "/" + request_method,
                                              data=data, json=json.model_dump() if json else None) as req:
                     self.logger.debug("Got %s %s %s", req.status, req.content_type, req.content_length)
+                    text = await req.text()
+                    reply: TelegramReply | None = None
+                    try:
+                        reply = TelegramReply.model_validate_json(text)
+                    except ValidationError as e:
+                        self.logger.error(f"Could not parse tg reply: {str(e)}, {text}")
                     if not req.ok:
-                        text = await req.text()
                         if req.status == 413:
                             self.logger.error("Request too big!")
                             self.TG_REQUEST_ERRORS.labels("too_big").inc()
@@ -81,21 +89,27 @@ class TelegramClient:
                             self.logger.error("Forbidden")
                             self.TG_REQUEST_ERRORS.labels("forbidden").inc()
                             raise TelegramClientForbidden(f"Forbidden {req.status} {text}")
+                        elif req.status == 429:
+                            self.logger.error("Too Many Requests")
+                            self.TG_REQUEST_ERRORS.labels("too_many_requests").inc()
+                            if reply and reply.parameters and reply.parameters.retry_after:
+                                pause = reply.parameters.retry_after
                         else:
                             self.TG_REQUEST_ERRORS.labels(f"http_{req.status}").inc()
                             raise TelegramClientException(f"Unexpected status {req.status} {text}")
 
-                    reply: TelegramReply = TelegramReply.model_validate_json(await req.text())
-                    if not reply.ok:
-                        self.TG_REQUEST_ERRORS.labels(f"server_error_{reply.error_code}").inc()
-                        raise TelegramClientException(f"Reply was not ok: {reply.error_code}, {reply.description}")
-                    return reply.result
+                    if reply:
+                        if not reply.ok:
+                            self.TG_REQUEST_ERRORS.labels(f"server_error_{reply.error_code}").inc()
+                            raise TelegramClientException(
+                                f"Reply was not ok: {reply.error_code}, {reply.description}, http: {req.status}")
+                        return reply.result
 
             except aiohttp.ClientError as ex:
                 self.TG_REQUEST_ERRORS.labels(f"http_client_error_{ex.__class__.__name__.lower()}").inc()
                 self.logger.exception("Got unexpected client error")
-
-            await asyncio.sleep(1)
+            self.logger.warning(f"Will try again in {pause} seconds")
+            await asyncio.sleep(pause)
 
     async def send_message(self, chat_id: str | int, text: str, parse_mode: str = "HTML") -> Message:
         req = TelegramSendMessageRequest(chat_id=chat_id,

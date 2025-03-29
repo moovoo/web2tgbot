@@ -4,7 +4,8 @@ scrape_configs:
       - targets:
           - messenger:8000
           - reader:8000
-          - scrapper:8000
+          - reddit_scrapper:8000
+          - instagram_scrapper:8000
           - bot:8000
 #  - job_name: rmq
 #    static_configs:

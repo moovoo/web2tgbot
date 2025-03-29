@@ -5,6 +5,7 @@ import random
 import signal
 import tempfile
 import uuid
+from itertools import batched
 from logging import getLogger
 from typing import Tuple
 
@@ -137,25 +138,26 @@ class TelegramMessenger:
 
             caption = f'<a href="{post.original_url}">{post.source_text or post.source_id}</a>: ' \
                       f'<a href="{post.url}">{post.text or "..."}</a>'
+            if post.text_block:
+                caption += f'<blockquote expandable>{post.text_block[:800]}</blockquote>'
 
             if post.images and len(post.images) > 1:
-                if len(post.images) > 10:
-                    src = random.sample(post.images, k=10)
-                else:
-                    src = post.images
-                media = [
-                    InputMedia(
-                        type="photo",
-                        media=image.urls[-1],
-                        caption=image.caption or caption,
-                        parse_mode="HTML") for image in src]
+                with_parts = len(post.images) > 10
+                for i, image_group in enumerate(batched(post.images, 10)):
+                    suffix = f"\n\nPart #{i+1}" if with_parts else ""
+                    media = [
+                        InputMedia(
+                            type="photo",
+                            media=image.urls[-1],
+                            caption=f"{image.caption or caption}{suffix}",
+                            parse_mode="HTML") for image in image_group]
 
-                # copyMessage does not work with media groups
-                for chat_id in message.conversation_ids:
-                    try:
-                        await self.tg_client.send_media_group(chat_id, media)
-                    except (TelegramClientBadRequest, TelegramClientForbidden) as ex:
-                        self.logger.warning(f"Could not send media group to chat {chat_id}, {ex}")
+                    # copyMessage does not work with media groups
+                    for chat_id in message.conversation_ids:
+                        try:
+                            await self.tg_client.send_media_group(chat_id, media)
+                        except (TelegramClientBadRequest, TelegramClientForbidden) as ex:
+                            self.logger.warning(f"Could not send media group to chat {chat_id}, {ex}")
 
             reply: Message | None = None
             for index, first_chat_id in enumerate(message.conversation_ids):

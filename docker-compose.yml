@@ -32,10 +32,17 @@ services:
     command:
       - "bot.telegram_messenger"
 
-  scrapper:
+  reddit_scrapper:
     <<: *x-base
     command:
-      - "bot.reddit_scrapper"
+      - "bot.scrapper"
+      - "reddit"
+
+  instagram_scrapper:
+    <<: *x-base
+    command:
+      - "bot.scrapper"
+      - "instagram"
 
   database:
     image: postgres:14.2
@@ -71,6 +78,7 @@ services:
 
   prometheus:
     image: bitnami/prometheus:3
+    restart: always
     volumes:
       - prometheus-persistence:/opt/bitnami/prometheus/data
       - ./prometheus.yaml:/opt/bitnami/prometheus/conf/prometheus.yml:ro
@@ -79,10 +87,12 @@ services:
 
   grafana:
     image: grafana/grafana-oss:main
+    restart: always
+    volumes:
+      - ./grafana_datasource_provision.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
+      - grafana-storage:/var/lib/grafana
     ports:
       - "127.0.0.1:3000:3000"
-    volumes:
-      - grafana-storage:/var/lib/grafana
 
   rabbitmq:
     image: rabbitmq:3.10-management-alpine

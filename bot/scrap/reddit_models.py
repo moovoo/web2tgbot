@@ -1,64 +1,8 @@
 from __future__ import annotations
 
 from typing import List, Dict
-from urllib.parse import urlparse, parse_qs
 
 from pydantic import BaseModel, Field
-
-from bot.common.settings import get_settings
-
-
-class BadRedditUrlException(Exception):
-    pass
-
-
-DELIM = "#"
-
-
-class SubredditListing(BaseModel):
-    subreddit: str
-    sorting: str
-    timing: str | None = None
-
-    def to_str_tuple(self):
-        return f"{self.subreddit}{DELIM}{self.sorting}{DELIM}{self.timing if self.timing else ''}"
-
-    @staticmethod
-    def from_str_tuple(source_str: str):
-        subreddit, sorting, timing = source_str.split(DELIM)
-        return SubredditListing(subreddit=subreddit, sorting=sorting, timing=timing)
-
-    @staticmethod
-    def from_url(url: str):
-        result = urlparse(url)
-        if result.hostname not in ("reddit.com", "www.reddit.com"):
-            raise BadRedditUrlException("Bad hostname: " + str(result.hostname))
-
-        try:
-            _, r, subreddit, sorting, *__ = result.path.split("/")
-        except ValueError:
-            raise BadRedditUrlException("Can't unpack path: " + result.path)
-        if r != "r":
-            raise BadRedditUrlException("Not a subreddit path: " + result.path)
-
-        timing = None
-
-        parsed_query = parse_qs(result.query)
-        try:
-            timing = parsed_query['t'][0]
-        except (KeyError, IndexError):
-            pass
-
-        return SubredditListing(subreddit=subreddit, sorting=sorting or "hot", timing=timing)
-
-    def to_url(self, json: bool = False) -> str:
-        url = f"{get_settings().RD_BASE_URL}{self.subreddit}/{self.sorting}/"
-        if json:
-            url += ".json"
-        if self.timing:
-            url += f"?t={self.timing}"
-        return url
-
 
 class ImageMetadata(BaseModel):
     x: int
@@ -165,6 +109,8 @@ class RedditPost(BaseModel):
     crosspost_parent_list: List[RedditPost] | None = None
     gallery_data: GalleryData | None = None
     subreddit_name_prefixed: str | None = None
+    selftext: str | None = None
+    selftext_html: str | None = None
 
 
 class Item(BaseModel):
