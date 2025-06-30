@@ -45,7 +45,11 @@ class RedditPosts(BaseScrapper):
 
             if reddit_post.gallery_data and reddit_post.gallery_data.items:
                 for item in reddit_post.gallery_data.items:
-                    media_item_type, url = media_items[item.media_id]
+                    try:
+                        media_item_type, url = media_items[item.media_id]
+                    except KeyError:
+                        self.logger.warning("Could not find '%s' in media items", item.media_id)
+                        continue
                     item_to_add = MediaItem(
                             urls=[self.fix_url(url)],
                             caption=item.caption
