@@ -87,7 +87,7 @@ async def test_post_media_video():
     media_item = post.videos[0]
     assert media_item.audio == "https://v.redd.it/vllakxmv8z791/DASH_AUDIO_64.mp4"
 
-    assert len(media_item.urls) == 4
+    assert len(media_item.urls) == 5
     assert media_item.urls[-1] == "https://v.redd.it/vllakxmv8z791/DASH_720.mp4"
 
 @pytest.mark.asyncio

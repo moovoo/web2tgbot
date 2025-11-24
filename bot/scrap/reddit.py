@@ -65,24 +65,25 @@ class RedditPosts(BaseScrapper):
                 video = reddit_post.preview.reddit_video_preview
 
             if video:
-                resolutions = ["240", "270", "360", "480", "720", "1080"]
+                resolutions = ["220", "240", "270", "360", "480", "720", "1080"]
 
                 parsed = urllib.parse.urlparse(video.fallback_url)
                 base_path, fallback_filename = parsed.path.rsplit("/", maxsplit=1)
 
-                match = re.match(r"DASH_(\d+)\.mp4", fallback_filename)
+                match = re.match(r"([A-Z]+)_(\d+)\.mp4", fallback_filename)
                 if match:
-                    fallback_resolution = match.group(1)
+                    video_type = match.group(1)
+                    fallback_resolution = match.group(2)
                     video_variants = []
                     try:
                         for res in resolutions[:resolutions.index(fallback_resolution) + 1]:
-                            video_variants.append(f"{parsed.scheme}://{parsed.netloc}{base_path}/DASH_{res}.mp4")
+                            video_variants.append(f"{parsed.scheme}://{parsed.netloc}{base_path}/{video_type}_{res}.mp4")
                     except (IndexError, ValueError):
                         self.logger.warning("Could not find '%s' in resolutions", fallback_filename)
                         video_variants.append(video.fallback_url)
                     videos.append(MediaItem(
                         urls=video_variants,
-                        audio=f"{parsed.scheme}://{parsed.netloc}{base_path}/DASH_AUDIO_64.mp4" if not video.is_gif else None))
+                        audio=f"{parsed.scheme}://{parsed.netloc}{base_path}/{video_type}_AUDIO_64.mp4" if not video.is_gif else None))
 
         elif reddit_post.media and reddit_post.media.type_:
             if reddit_post.media.type_ == "youtube.com" and \
