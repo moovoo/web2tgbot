@@ -21,3 +21,10 @@ class Conversation(Base):
 
     media_source_id = Column(Integer, ForeignKey("media_sources.id", ondelete="CASCADE"))
     media_source = relationship("MediaSource", back_populates="conversation")
+
+
+class ConversationSettings(Base):
+    __tablename__ = "conversation_settings"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation = Column(String, index=True)
+    filter = Column(String, index=False)

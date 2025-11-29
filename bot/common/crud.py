@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.util import immutabledict
 
-from bot.common.db_models import MediaSource, Conversation
+from bot.common.db_models import MediaSource, Conversation, ConversationSettings
 
 
 class DBException(Exception):
@@ -89,3 +89,11 @@ async def get_media_sources_for_conversation(db: AsyncSession, conversation: str
     )
     res = await db.execute(statement)
     return [item.media_source for item in res.scalars().all()]
+
+
+async def get_conversation_settings(db: AsyncSession, conversation: str):
+    statement = select(ConversationSettings).filter(
+        ConversationSettings.conversation == conversation
+    )
+    res = await db.execute(statement)
+    return res.scalars().first()

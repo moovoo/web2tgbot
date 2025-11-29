@@ -50,8 +50,24 @@ class Web2TgBot:
 
     async def process_post(self, post: Post):
         destinations = await self.configuration.find_subs(post.source_id)
-        for dest, convs in destinations.items():
-            await self.send_message(dest, convs, post=post)
+
+        settings = {k: await self.configuration.get_conversation_settings(k) for k in destinations}
+
+        parsed = self.configuration.parse_subs(destinations)
+        for dest, convs in parsed.items():
+
+            filtered = []
+            for conv in convs:
+                if setting := settings.get(f"{dest}@{conv}"):
+                    self.logger.debug(f"Got settings for {conv}: {setting}")
+                    f = setting.get("filter", "")
+                    if "videoonly" in f:
+                        if not post.videos:
+                            self.logger.info(f"Skipping {conv} because it has no videos, but should")
+                            continue
+                filtered.append(conv)
+
+            await self.send_message(dest, filtered, post=post)
 
     @time(BOT_PROCESS_MESSAGE_TIME)
     async def process_incoming_message(self, message: IncomingMessage):
