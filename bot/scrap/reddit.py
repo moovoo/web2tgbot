@@ -1,4 +1,8 @@
+import asyncio
+import logging
+import random
 import re
+import time
 from logging import getLogger
 from typing import List
 import urllib.parse
@@ -6,14 +10,18 @@ import pydantic
 from prometheus_client import Histogram, Counter
 
 from bot.common.models import Post, MediaItem, ScrapSource
+from bot.common.settings import get_settings
 from bot.scrap.reddit_models import RedditReply, Item, RedditPost, PreviewImage, RedditVideoPreview
-from bot.scrap.basescrapper import BaseScrapper, ScrapValidationError
+from bot.scrap.basescrapper import BaseScrapper, ScrapValidationError, BaseHttpProvider
 
 
 class RedditPosts(BaseScrapper):
     REQUEST_TIME = Histogram(name="reddit_client_request_time", documentation="Time spent waiting for reddit client request")
     REQUEST_ERRORS = Counter(name="reddit_client_errors", documentation="Reddit client errors",
                                 labelnames=["error_type", "sub_name"])
+
+    def __init__(self, provider: BaseHttpProvider):
+        super().__init__(provider)
 
     def data_to_posts(self, sub: ScrapSource, data: str) -> List[Post]:
         try:
@@ -126,3 +134,27 @@ class RedditPosts(BaseScrapper):
                     videos=videos if videos else None,
                     original_url="https://reddit.com" + reddit_post.permalink,
                     text_block=reddit_post.selftext)
+
+class RedditHttpProvider(BaseHttpProvider):
+
+    def __init__(self, headless=True):
+        super().__init__(headless=headless)
+        self.last_login_time: float = 0.0
+
+    async def login(self):
+        if time.time() - self.last_login_time > (10 + random.randint(0, 2)) * 60:
+            self.last_login_time = time.time()
+            await self.page.goto(get_settings().RD_BASE_URL)
+            await asyncio.sleep(5)
+            try:
+                await self.page.get_by_text("Find anything").wait_for(timeout=10000)
+                await asyncio.sleep(5)
+                for _ in range(random.randint(2, 5)):
+                    await self.page.keyboard.press("End")
+                    await asyncio.sleep(random.uniform(0.5, 2.0))
+                for _ in range(random.randint(2, 5)):
+                    await self.page.keyboard.press("Home")
+                    await asyncio.sleep(random.uniform(0.5, 2.0))
+            except Exception as ex:
+                self.logger.exception("oh no")
+            await super().login()

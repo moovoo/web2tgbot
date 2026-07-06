@@ -11,9 +11,11 @@ from bot.common.configuration import get_configuration
 from bot.common.models import ScrapSource, BadSourceException, ScrapSourceType, Post
 from bot.common.pubsub import get_new_pubsub
 from bot.common.redis import get_new_redis
+from bot.common.settings import get_settings
 from bot.scrap.insta import InstaPosts
-from bot.scrap.reddit import RedditPosts
-from bot.scrap.basescrapper import BaseScrapper, ScrapValidationError, ScrapNotFoundError, ScrapThrottleError, ScrapError
+from bot.scrap.reddit import RedditPosts, RedditHttpProvider
+from bot.scrap.basescrapper import BaseScrapper, ScrapValidationError, ScrapNotFoundError, ScrapThrottleError, \
+    ScrapError, BaseHttpProvider
 
 logger = getLogger()
 
@@ -29,9 +31,11 @@ async def main(scrap_source_name: str):
 
     match scrap_source_type:
         case ScrapSourceType.Reddit:
-            posts: BaseScrapper = RedditPosts()
+            provider = RedditHttpProvider()
+            posts: BaseScrapper = RedditPosts(provider)
         case ScrapSourceType.Instagram:
-            posts: BaseScrapper = InstaPosts(cache)
+            provider = BaseHttpProvider()
+            posts: BaseScrapper = InstaPosts(cache, provider)
         case _:
             raise Exception("Can't scrap that source")
 
@@ -42,47 +46,52 @@ async def main(scrap_source_name: str):
     default_pause = posts.default_pause
     pause = default_pause
 
-    while True:
-        watch_subs: List[str] = await configuration.get_sources()
-        for full_id in watch_subs:
-            try:
-                sub = ScrapSource.from_str_tuple(full_id)
-                if sub.source_type != scrap_source_type:
-                    continue
-            except BadSourceException:
-                logger.warning("Can't parse scrap source %s", full_id)
-                continue
-
-            cache_name = f"cache_{sub.params.to_str_tuple()}"
-            first_time = not await cache.has_cache(cache_name)
-
-            scrapped: List[Post] = []
-            while True:
-                scrap_pause.labels(sub=sub.to_str_tuple()).set(pause)
-                await asyncio.sleep(pause)
+    await posts.start()
+    try:
+        while True:
+            watch_subs: List[str] = await configuration.get_sources()
+            for full_id in watch_subs:
                 try:
-                    scrapped = await posts.get_posts(sub)
-                except ScrapNotFoundError:
-                    logger.warning("Could not found listing, ignoring...")
-                except ScrapValidationError:
-                    logger.error("Validation failed")
-                except ScrapThrottleError:
-                    pause += 30 if pause < max_pause else 0
-                    logger.warning("Too many requests %s, will wait for %s", sub.params.to_str_tuple(), pause)
+                    sub = ScrapSource.from_str_tuple(full_id)
+                    if sub.source_type != scrap_source_type:
+                        continue
+                except BadSourceException:
+                    logger.warning("Can't parse scrap source %s", full_id)
                     continue
-                except ScrapError:
-                    logger.exception("Failed to get posts %s", sub.params.to_str_tuple())
-                break
 
-            pause = default_pause
+                cache_name = f"cache_{sub.params.to_str_tuple()}"
+                first_time = not await cache.has_cache(cache_name)
 
-            for post in scrapped:
-                if await cache.cache_item(cache_name, post.unique_id) and not first_time:
-                    posts_pushed.labels(sub=sub.params.to_str_tuple()).inc()
-                    logger.debug("Going to send new post: %s", post)
-                    await pubsub.publish("media",
-                                         post.model_dump_json(exclude_unset=True, exclude_defaults=True, exclude_none=True))
-        await asyncio.sleep(1)
+                scrapped: List[Post] = []
+                while True:
+                    scrap_pause.labels(sub=sub.to_str_tuple()).set(pause)
+                    await asyncio.sleep(pause)
+                    try:
+                        scrapped = await posts.get_posts(sub)
+                    except ScrapNotFoundError:
+                        logger.warning("Could not found listing, ignoring...")
+                    except ScrapValidationError:
+                        logger.error("Validation failed")
+                    except ScrapThrottleError:
+                        pause += 30 if pause < max_pause else 0
+                        logger.warning("Too many requests %s, will wait for %s", sub.params.to_str_tuple(), pause)
+                        continue
+                    except ScrapError:
+                        logger.exception("Failed to get posts %s", sub.params.to_str_tuple())
+                    break
+
+                pause = default_pause
+
+                for post in scrapped:
+                    if await cache.cache_item(cache_name, post.unique_id) and not first_time:
+                        await posts.download_media([post], get_settings().media_path)
+                        posts_pushed.labels(sub=sub.params.to_str_tuple()).inc()
+                        logger.debug("Going to send new post: %s", post)
+                        await pubsub.publish("media",
+                                              post.model_dump_json(exclude_unset=True, exclude_defaults=True, exclude_none=True))
+            await asyncio.sleep(1)
+    finally:
+        await posts.stop()
 
 if __name__ == "__main__":
     logging.config.fileConfig("logger.ini")

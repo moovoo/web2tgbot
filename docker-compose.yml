@@ -10,6 +10,8 @@ x-base: &x-base
     bot_token: "${TOKEN}"
   tmpfs:
     - /tmp
+  volumes:
+    - media:/media
   depends_on:
     - database
     - rabbitmq
@@ -37,6 +39,8 @@ services:
     command:
       - "bot.scrapper"
       - "reddit"
+    volumes:
+      - ./reddit_state.json:/app/state.json:rw
 
   instagram_scrapper:
     <<: *x-base
@@ -112,4 +116,5 @@ volumes:
   rabbitmq:
   prometheus-persistence:
   grafana-storage:
+  media:
 

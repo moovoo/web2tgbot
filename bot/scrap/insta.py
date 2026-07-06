@@ -23,8 +23,8 @@ class InstaPosts(BaseScrapper):
     REQUEST_ERRORS = Counter(name="instagram_client_errors", documentation="Reddit client errors",
                                 labelnames=["error_type", "sub_name"])
 
-    def __init__(self, cache: Cache):
-        super().__init__()
+    def __init__(self, cache: Cache, provider):
+        super().__init__(provider)
         self.cache = cache
 
     # async def url(self, scrap_source: ScrapSource) -> str:

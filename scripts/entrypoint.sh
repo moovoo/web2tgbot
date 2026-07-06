@@ -7,13 +7,13 @@ echo $1
 
 if [ "$1" = "bot.bot" ] || [ "$1" = "tests" ] ; then
   while true; do
-    alembic upgrade head && break || true
+    uv run --no-dev alembic upgrade head && break || true
     sleep 1
   done
 fi
-python -m bot.startup
+uv run -m bot.startup
 if [ "$1" = "tests" ] ; then
-  python -m pytest -s
+  uv run pytest -s
 else
-  python -m "$@"
+  uv run --no-dev -m "$@"
 fi

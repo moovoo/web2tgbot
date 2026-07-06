@@ -5,12 +5,12 @@ from logging import getLogger
 
 from bot.common.pubsub import Pubsub, get_new_pubsub
 from bot.common.settings import get_settings
-from bot.telegram.telegram_models import Message
-from bot.telegram.updates import TelegramUpdates
 from bot.common.models import IncomingMessage
 
 from prometheus_client import Counter
 from prometheus_async.aio import web
+
+import telegram
 
 class UpdateReader:
 
@@ -22,26 +22,28 @@ class UpdateReader:
     def __init__(self, tg_bot_token: str):
         self.token = tg_bot_token
         self.bot_id = tg_bot_token.split(":")[0]
-        self.tg_updates = TelegramUpdates(self.token)
-
+        # self.tg_updates = TelegramUpdates(self.token)
+        self.bot = telegram.Bot(self.token)
         self.pubsub: Pubsub = get_new_pubsub()
 
         self.logger = getLogger("UpdateReader")
 
     async def serve(self):
-        async for update in self.tg_updates.iter_updates():
-            self.logger.debug(f"Got update {update}")
-            if update.message and update.message.text:
-                await self.process_message(update.message)
-            elif update.channel_post and update.channel_post.text:
-                await self.process_message(update.channel_post)
+        async with self.bot:
+            updates = (await self.bot.get_updates())
+            self.logger.debug(f"Got update {updates}")
+            for update in updates:
+                if update.message and update.message.text:
+                    await self.process_message(update.message)
+                elif update.channel_post and update.channel_post.text:
+                    await self.process_message(update.channel_post)
 
-    async def process_message(self, message: Message):
+    async def process_message(self, message: telegram.Message):
         ch = "incoming_message"
         msg = IncomingMessage(provider=f"telegram_{self.bot_id}",
                               conversation_id=str(message.chat.id),
                               from_user_id=str(message.from_user.id) if message.from_user else "",
-                              payload=message.text,
+                              payload=message.text or "",
                               message_id=str(message.message_id))
         self.logger.debug(f"Going to send {msg} to {ch}")
         self.READER_INCOMING_MESSAGES_PROCESSED.labels(
