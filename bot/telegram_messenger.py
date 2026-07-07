@@ -55,7 +55,7 @@ class TelegramMessenger:
         finally:
             await self.tg_client.shutdown()
 
-    async def get_content_size(self, path: str) -> int:
+    def get_content_size(self, path: str) -> int:
         try:
             size = Path(path).stat().st_size
             self.logger.debug("Got size for %s: %s", path, size)
@@ -89,12 +89,12 @@ class TelegramMessenger:
         audio_content_size = 0
         if media_item.audio:
             try:
-                audio_content_size = await self.get_content_size(media_item.audio) or 0
+                audio_content_size = self.get_content_size(media_item.audio) or 0
                 self.logger.debug("audio size is %s", audio_content_size)
             except ProcessingError as ex:
                 self.logger.warning(f"Ignoring audio channel because of processing error {ex}")
         for video_url in reversed(media_item.urls):
-            sz = await self.get_content_size(video_url)
+            sz = self.get_content_size(video_url)
             self.logger.debug("Candidate size is %s", sz)
             if audio_content_size == 0 and sz < self.MAX_URL_SIZE:
                 return video_url
@@ -155,7 +155,7 @@ class TelegramMessenger:
                     suffix = f"\n\nPart #{i+1}" if with_parts else ""
                     media = [
                         telegram.InputMediaPhoto(
-                            media=image.urls[-1],
+                            media=open(image.urls[-1], "rb"),
                             caption=f"{image.caption or caption}{suffix}",
                             parse_mode="HTML") for image in image_group]
 
@@ -175,13 +175,13 @@ class TelegramMessenger:
                         if video:
                             await self.tg_client.send_video(
                                 chat_id=first_chat_id,
-                                video=video,
+                                video=video if type(video) is bytes else open(video, "rb"),
                                 caption=post.videos[0].caption or caption,
                             )
 
                     if post.images and len(post.images) == 1:
                         reply = await self.tg_client.send_photo(chat_id=first_chat_id,
-                                                                photo=post.images[0].urls[-1],
+                                                                photo=open(post.images[0].urls[-1], "rb"),
                                                                 caption=post.images[0].caption or caption,
                                                                 )
                 except (telegram.error.BadRequest, telegram.error.Forbidden) as ex:
