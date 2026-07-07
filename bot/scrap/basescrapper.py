@@ -170,7 +170,9 @@ class BaseScrapper:
             raise ScrapError(f"Client error {str(ex)}") from ex
         finally:
             self.REQUEST_TIME.observe(time.time() - t)
-        return self.data_to_posts(sub, data)
+        posts = self.data_to_posts(sub, data)
+        self.logger.debug(f"Found some posts: {len(posts)}")
+        return posts
 
     def data_to_posts(self, sub: ScrapSource, data: str) -> List[Post]:
         pass

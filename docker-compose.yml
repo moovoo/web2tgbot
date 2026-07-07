@@ -117,4 +117,8 @@ volumes:
   prometheus-persistence:
   grafana-storage:
   media:
-
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=1G,uid=55555
