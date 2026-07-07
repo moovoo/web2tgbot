@@ -64,6 +64,24 @@ class TelegramMessenger:
             self.logger.error("Failed to get content size for %s: %s", path, ex)
             raise ProcessingError("Failed to get content_size") from ex
 
+    def _cleanup_files(self, post):
+        for media_list in (post.images or [], post.videos or []):
+            for media_item in media_list:
+                for url in media_item.urls:
+                    try:
+                        if Path(url).exists():
+                            Path(url).unlink()
+                            self.logger.debug("Deleted %s", url)
+                    except OSError as ex:
+                        self.logger.warning("Failed to delete %s: %s", url, ex)
+                if media_item.audio:
+                    try:
+                        if Path(media_item.audio).exists():
+                            Path(media_item.audio).unlink()
+                            self.logger.debug("Deleted %s", media_item.audio)
+                    except OSError as ex:
+                        self.logger.warning("Failed to delete %s: %s", media_item.audio, ex)
+
     @time(VIDEO_PROCESSING_TIME)
     async def prepare_video(self, media_item: MediaItem) -> str | bytes | None:
         self.logger.debug("Will look for suitable video in %s", media_item.urls)
@@ -182,6 +200,9 @@ class TelegramMessenger:
 
         except ProcessingError:
             self.logger.exception("Could not process the post")
+        finally:
+            if message.post:
+                self._cleanup_files(message.post)
 
 
 async def main():
