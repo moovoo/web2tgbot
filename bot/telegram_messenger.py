@@ -136,7 +136,7 @@ class TelegramMessenger:
             if message.text:
                 for chat_id in message.conversation_ids:
                     try:
-                        await self.tg_client.send_message(chat_id, message.text)
+                        await self.tg_client.send_message(chat_id, message.text, parse_mode="HTML")
                     except (telegram.error.BadRequest, telegram.error.Forbidden) as ex:
                         self.logger.warning(f"Could not send text to chat {chat_id}, {ex}")
 
@@ -177,12 +177,14 @@ class TelegramMessenger:
                                 chat_id=first_chat_id,
                                 video=video if type(video) is bytes else open(video, "rb"),
                                 caption=post.videos[0].caption or caption,
+                                parse_mode="HTML"
                             )
 
                     if post.images and len(post.images) == 1:
                         reply = await self.tg_client.send_photo(chat_id=first_chat_id,
                                                                 photo=open(post.images[0].urls[-1], "rb"),
                                                                 caption=post.images[0].caption or caption,
+                                                                parse_mode="HTML"
                                                                 )
                 except (telegram.error.BadRequest, telegram.error.Forbidden) as ex:
                     self.logger.warning(f"Could not send msg to {first_chat_id}, {ex}")
