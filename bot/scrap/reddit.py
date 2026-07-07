@@ -120,10 +120,10 @@ class RedditPosts(BaseScrapper):
                     if post_image.source and post_image.source.url:
                         images.append(MediaItem(urls=[self.fix_url(post_image.source.url)]))
 
-        source_sub = (reddit_post.subreddit_name_prefixed or reddit_post.subreddit)[2:]
-        if source_sub.lower() not in source_id.lower():
-            self.logger.warning(f"Here we go again: {source_sub.lower()}, source_id: {source_id.lower()}, reddit_post: {reddit_post}")
-            return None
+        # source_sub = (reddit_post.subreddit_name_prefixed or reddit_post.subreddit)[2:]
+        # if source_sub.lower() not in source_id.lower():
+        #     self.logger.warning(f"Here we go again: {source_sub.lower()}, source_id: {source_id.lower()}, reddit_post: {reddit_post}")
+        #     return None
 
         return Post(unique_id=reddit_post.id,
                     source_id=source_id,
