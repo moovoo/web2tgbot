@@ -155,7 +155,7 @@ class TelegramMessenger:
                     suffix = f"\n\nPart #{i+1}" if with_parts else ""
                     media = [
                         telegram.InputMediaPhoto(
-                            media=Path(image.urls[-1]),
+                            media=image.urls[-1],
                             caption=f"{image.caption or caption}{suffix}",
                             parse_mode="HTML") for image in image_group]
 
@@ -181,7 +181,7 @@ class TelegramMessenger:
 
                     if post.images and len(post.images) == 1:
                         reply = await self.tg_client.send_photo(chat_id=first_chat_id,
-                                                                photo=Path(post.images[0].urls[-1]),
+                                                                photo=post.images[0].urls[-1],
                                                                 caption=post.images[0].caption or caption,
                                                                 )
                 except (telegram.error.BadRequest, telegram.error.Forbidden) as ex:
