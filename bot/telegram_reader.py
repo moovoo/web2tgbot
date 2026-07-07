@@ -31,7 +31,7 @@ class UpdateReader:
     async def serve(self):
         async with self.bot:
             while True:
-                updates = (await self.bot.get_updates())
+                updates = (await self.bot.get_updates(timeout=600))
                 self.logger.debug(f"Got update {updates}")
                 for update in updates:
                     if update.message and update.message.text:
