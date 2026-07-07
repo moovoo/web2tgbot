@@ -30,13 +30,14 @@ class UpdateReader:
 
     async def serve(self):
         async with self.bot:
-            updates = (await self.bot.get_updates())
-            self.logger.debug(f"Got update {updates}")
-            for update in updates:
-                if update.message and update.message.text:
-                    await self.process_message(update.message)
-                elif update.channel_post and update.channel_post.text:
-                    await self.process_message(update.channel_post)
+            while True:
+                updates = (await self.bot.get_updates())
+                self.logger.debug(f"Got update {updates}")
+                for update in updates:
+                    if update.message and update.message.text:
+                        await self.process_message(update.message)
+                    elif update.channel_post and update.channel_post.text:
+                        await self.process_message(update.channel_post)
 
     async def process_message(self, message: telegram.Message):
         ch = "incoming_message"
