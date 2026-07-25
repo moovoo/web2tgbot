@@ -13,7 +13,8 @@ x-base: &x-base
   tmpfs:
     - /tmp
   volumes:
-    - media:/media
+    - media:/media:rw
+    - ./reddit_state.json:/app/state.json:rw
   depends_on:
     - database
     - rabbitmq
@@ -41,8 +42,6 @@ services:
     command:
       - "bot.scrapper"
       - "reddit"
-    volumes:
-      - ./reddit_state.json:/app/state.json:rw
 
   instagram_scrapper:
     <<: *x-base
