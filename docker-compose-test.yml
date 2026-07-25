@@ -6,6 +6,8 @@ x-base: &x-base
     rabbitmq: "amqp://web2tg:bot@rabbitmq:5672/"
     db: "postgresql+asyncpg://web2tg:bot@database:5432/web2tg"
     bot_token: "12345:TOKEN"
+    reddit_username: "test_user"
+    reddit_password: "test_pass"
     RD_BASE_URL: "http://wiremock_reddit:8080/r/"
     BOT_URL: "http://wiremock_tg:8080/bot"
   tmpfs:

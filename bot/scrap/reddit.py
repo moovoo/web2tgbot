@@ -144,17 +144,19 @@ class RedditHttpProvider(BaseHttpProvider):
     async def login(self):
         if time.time() - self.last_login_time > (10 + random.randint(0, 2)) * 60:
             self.last_login_time = time.time()
+            await self.context.tracing.start(snapshots=True, screenshots=True, sources=True)
+
             await self.page.goto(get_settings().RD_BASE_URL)
             await asyncio.sleep(5)
             try:
-                await self.page.get_by_text("Find anything").wait_for(timeout=10000)
-                await asyncio.sleep(5)
-                for _ in range(random.randint(2, 5)):
-                    await self.page.keyboard.press("End")
-                    await asyncio.sleep(random.uniform(0.5, 2.0))
-                for _ in range(random.randint(2, 5)):
-                    await self.page.keyboard.press("Home")
-                    await asyncio.sleep(random.uniform(0.5, 2.0))
+                await self.page.goto("https://www.reddit.com/login/")
+                # await self.page.get_by_role(role="button", name="Log in").click(timeout=10000)
+                await self.page.get_by_role("textbox", name="Email or username").fill(get_settings().reddit_username)
+                await self.page.get_by_role("textbox", name="Password").fill(get_settings().reddit_password)
+                await asyncio.sleep(1)
+                await self.page.get_by_role("button", name="Log In").click(timeout=10000)
             except Exception as ex:
                 self.logger.exception("oh no")
+            finally:
+                await self.context.tracing.stop(path="trace.zip")
             await super().login()

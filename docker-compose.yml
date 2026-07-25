@@ -8,6 +8,8 @@ x-base: &x-base
     rabbitmq: "amqp://web2tg:bot@rabbitmq:5672/"
     db: "postgresql+asyncpg://web2tg:bot@database:5432/web2tg"
     bot_token: "${TOKEN}"
+    reddit_username: "${REDDIT_USERNAME}"
+    reddit_password: "${REDDIT_PASSWORD}"
   tmpfs:
     - /tmp
   volumes:

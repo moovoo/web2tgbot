@@ -15,6 +15,11 @@ class Settings(BaseSettings):
 
     bot_token: str = ""
 
+    reddit_username: str = ""
+    reddit_password: str = ""
+
+    http_timeout: int = 60
+
     max_sources: int = 10
 
     media_path: str = "/media"

@@ -18,6 +18,7 @@ from playwright.async_api import async_playwright
 from playwright.async_api import Playwright, Browser, BrowserContext, Page, APIResponse, Error
 
 from bot.common.models import ScrapSource, Post
+from bot.common.settings import get_settings
 
 
 class HttpProviderError(Exception):
@@ -34,6 +35,32 @@ class BaseHttpProvider:
         self.page: Page | None = None
         # self._cw: Any = None
         self.headless = headless
+
+    async def _cleanup(self):
+        if self.page:
+            try:
+                await self.page.close()
+            except Exception as e:
+                self.logger.warning(f"Error closing page during cleanup: {e}")
+            self.page = None
+        if self.context:
+            try:
+                await self.context.close()
+            except Exception as e:
+                self.logger.warning(f"Error closing context during cleanup: {e}")
+            self.context = None
+        if self.browser:
+            try:
+                await self.browser.close()
+            except Exception as e:
+                self.logger.warning(f"Error closing browser during cleanup: {e}")
+            self.browser = None
+        if self.playwright:
+            try:
+                await self.playwright.stop()
+            except Exception as e:
+                self.logger.warning(f"Error stopping playwright during cleanup: {e}")
+            self.playwright = None
 
     async def start(self):
         if Path("state.json").exists():
@@ -55,33 +82,34 @@ class BaseHttpProvider:
             self.logger.info("Started with playwright")
 
     async def stop(self):
-        if self.page:
-            self.page = None
-        if self.context:
-            await self.context.storage_state(path="state.json")
-            await self.context.close()
-            self.context = None
-        if self.browser:
-            await self.browser.close()
-            self.browser = None
-        if self.playwright:
-            await self.playwright.stop()
-            self.playwright = None
-        # if self._cw:
-        #     await self._cw.close()
-        #     self._cw = None
+        await self._cleanup()
         self.logger.info("Stopped http provider")
+
+    async def reset(self):
+        self.logger.warning("Resetting http provider due to timeout")
+        await self._cleanup()
+        await self.start()
 
     async def get(self, url: str, **kwargs) -> APIResponse:
         if not self.context:
             raise HttpProviderError("HttpProvider not started, call start() first")
-        await self.login()
-        response = await self.context.request.get(url, **kwargs)
-        return response
+        timeout = get_settings().http_timeout
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                await asyncio.wait_for(self.login(), timeout=timeout)
+                response = await asyncio.wait_for(self.context.request.get(url, **kwargs), timeout=timeout)
+                return response
+            except asyncio.TimeoutError:
+                if attempt < max_retries:
+                    self.logger.warning(f"Request to {url} timed out on attempt {attempt + 1}/{max_retries + 1}, resetting and retrying")
+                    await self.reset()
+                    continue
+                self.logger.error(f"Request to {url} timed out after {max_retries + 1} attempts")
+                raise
 
     async def login(self):
         await self.context.storage_state(path="state.json")
-
 
 class ScrapError(Exception):
     pass
