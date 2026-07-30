@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Counter, Any
 from urllib.parse import urlparse
 
+from playwright._impl._errors import TargetClosedError
 from prometheus_client import Histogram
 
 try:
@@ -100,7 +101,7 @@ class BaseHttpProvider:
                 await asyncio.wait_for(self.login(), timeout=timeout)
                 response = await asyncio.wait_for(self.context.request.get(url, **kwargs), timeout=timeout)
                 return response
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, TargetClosedError):
                 if attempt < max_retries:
                     self.logger.warning(f"Request to {url} timed out on attempt {attempt + 1}/{max_retries + 1}, resetting and retrying")
                     await self.reset()

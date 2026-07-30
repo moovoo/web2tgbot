@@ -155,6 +155,7 @@ class RedditHttpProvider(BaseHttpProvider):
                 await self.page.get_by_role("textbox", name="Password").fill(get_settings().reddit_password)
                 await asyncio.sleep(1)
                 await self.page.get_by_role("button", name="Log In").click(timeout=10000)
+                await asyncio.sleep(5)
             except Exception as ex:
                 self.logger.exception("oh no")
             finally:
