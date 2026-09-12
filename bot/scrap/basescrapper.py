@@ -1,5 +1,7 @@
 import asyncio
+import base64
 import hashlib
+import json
 import random
 import time
 from logging import getLogger
@@ -24,6 +26,49 @@ from bot.common.settings import get_settings
 
 class HttpProviderError(Exception):
     pass
+
+
+class InPageResponse:
+    """Mimics the playwright APIResponse interface for responses fetched inside the page context."""
+
+    def __init__(self, status: int, ok: bool, url: str, headers: dict, body: bytes):
+        self.status = status
+        self.ok = ok
+        self.url = url
+        self.headers = {k.lower(): v for k, v in headers.items()}
+        self._body = body
+
+    def headers_array(self) -> List[dict]:
+        return [{"name": name, "value": value} for name, value in self.headers.items()]
+
+    async def body(self) -> bytes:
+        return self._body
+
+    async def text(self) -> str:
+        return self._body.decode("utf-8", errors="replace")
+
+    async def json(self):
+        return json.loads(self._body)
+
+
+IN_PAGE_FETCH_JS = """
+async ([url, headers]) => {
+    const init = { credentials: "include" };
+    if (headers && Object.keys(headers).length) {
+        init.headers = headers;
+    }
+    const resp = await fetch(url, init);
+    const out = {};
+    resp.headers.forEach((value, key) => { out[key] = value; });
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    const chunks = [];
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
+    }
+    return { status: resp.status, ok: resp.ok, url: resp.url, headers: out, body: btoa(chunks.join("")) };
+}
+"""
 
 
 class BaseHttpProvider:
@@ -71,6 +116,7 @@ class BaseHttpProvider:
         if CLOAK:
             self.context = await launch_context_async(headless=self.headless,
                                                       storage_state=storage,
+                                                      humanize=True,
                                                       )
             # self.context = self._cw.context
             self.page = await self.context.new_page()
@@ -91,7 +137,18 @@ class BaseHttpProvider:
         await self._cleanup()
         await self.start()
 
-    async def get(self, url: str, **kwargs) -> APIResponse:
+    async def _get_in_page(self, url: str, **kwargs) -> InPageResponse:
+        headers = kwargs.get("headers")
+        result = await self.page.evaluate(IN_PAGE_FETCH_JS, [url, headers])
+        return InPageResponse(
+            status=result["status"],
+            ok=result["ok"],
+            url=result["url"],
+            headers=result["headers"],
+            body=base64.b64decode(result["body"]),
+        )
+
+    async def get(self, url: str, **kwargs) -> APIResponse | InPageResponse:
         if not self.context:
             raise HttpProviderError("HttpProvider not started, call start() first")
         timeout = get_settings().http_timeout
@@ -99,7 +156,16 @@ class BaseHttpProvider:
         for attempt in range(max_retries + 1):
             try:
                 await asyncio.wait_for(self.login(), timeout=timeout)
-                response = await asyncio.wait_for(self.context.request.get(url, **kwargs), timeout=timeout)
+                try:
+                    # fetch inside the page context so the request goes through the real
+                    # browser network stack (fingerprint, cookies, headers) instead of
+                    # playwright's standalone http client
+                    response = await asyncio.wait_for(self._get_in_page(url, **kwargs), timeout=timeout)
+                except Error as e:
+                    # in-page fetch cannot read the response (CORS / network level failure,
+                    # e.g. cross-origin media cdns) -> fall back to the context api client
+                    self.logger.warning(f"In-page fetch of {url} failed ({e}), using context request")
+                    response = await asyncio.wait_for(self.context.request.get(url, **kwargs), timeout=timeout)
                 return response
             except (asyncio.TimeoutError, TargetClosedError):
                 if attempt < max_retries:
